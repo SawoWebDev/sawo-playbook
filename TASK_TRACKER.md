@@ -12,7 +12,7 @@
 - **Current phase:** Phase 10 — Full Regression & Hardening (Phase 3 blocked on video-stack decision; Phase 9 optional)
 - **Last completed step:** Phase 10 core done — BullMQ worker + retention/purge + media cleanup (4 tests), prod images + `docker-compose.prod.yml`, CSP, security checklist, README. **Full API suite 168/168 green**, `next build` clean.
 - **Next action (pick up here):** All buildable phases are done. Remaining optional work: nonce-based CSP, virtualised grids, Phase 9 marketing site. **Blocked on business decisions (§18):** Phase 3 (video stack, Chrome plugin), Green/Red QR meaning, confirm quorum=3 / public viewing default. Ask the user for these decisions or for commit/PR.
-- **Known issues / notes:** see "How to run" below. Nothing is committed to git yet (user hasn't asked). Full suite: 13 files / 179 tests green.
+- **Known issues / notes:** see "How to run" below. Initial commit `b095cff` on `main` (no remote configured). Full suite: 13 files / 179 tests green.
 - **Gotcha:** when editing files with Python on this Windows host always use `open(p, encoding='utf-8')` — the default cp1252 codec corrupted non-ASCII chars once (fixed).
 
 ### How to run (everything in Docker)
