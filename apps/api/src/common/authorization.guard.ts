@@ -1,0 +1,87 @@
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
+import type { Request } from 'express';
+import { env } from '../config/env';
+import { PrismaService } from '../prisma/prisma.service';
+import { orgIsUsable } from './org-status';
+import { AccessTokenPayload, AuthUser } from './auth-user';
+import { IS_PUBLIC_KEY, PERMISSION_KEY } from './decorators';
+import { Permission, roleHasPermission } from './permissions';
+
+/**
+ * Global guard (§7.3 rules 1, 2, 7, 9):
+ *  - deny-by-default: every route must declare @Public() or @RequirePermission();
+ *  - verifies the access JWT, then re-reads the user so that status, role and
+ *    tokenVersion are authoritative from the DB, not from the token;
+ *  - organizationId is taken only from the DB user row.
+ */
+@Injectable()
+export class AuthorizationGuard implements CanActivate {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly jwt: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const targets = [ctx.getHandler(), ctx.getClass()];
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets)) return true;
+
+    const permission = this.reflector.getAllAndOverride<Permission>(PERMISSION_KEY, targets);
+    if (!permission) {
+      throw new InternalServerErrorException('Route has no declared permission');
+    }
+
+    const req = ctx.switchToHttp().getRequest<Request & { user?: AuthUser }>();
+    const user = await this.authenticate(req);
+    req.user = user;
+
+    if (!roleHasPermission(user.role, permission)) {
+      throw new ForbiddenException('Insufficient permission');
+    }
+    return true;
+  }
+
+  private async authenticate(req: Request): Promise<AuthUser> {
+    const header = req.get('authorization');
+    if (!header?.startsWith('Bearer ')) throw new UnauthorizedException();
+    let payload: AccessTokenPayload;
+    try {
+      payload = await this.jwt.verifyAsync<AccessTokenPayload>(header.slice(7), {
+        secret: env.jwtAccessSecret,
+        algorithms: ['HS256'],
+      });
+    } catch {
+      throw new UnauthorizedException();
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { organization: { select: { status: true } } },
+    });
+    if (
+      !user ||
+      user.status !== 'active' ||
+      user.tokenVersion !== payload.tv ||
+      user.organizationId !== payload.org ||
+      !orgIsUsable(user.organization.status)
+    ) {
+      throw new UnauthorizedException();
+    }
+    return {
+      id: user.id,
+      organizationId: user.organizationId,
+      role: user.orgRole,
+      email: user.email,
+      name: user.name,
+    };
+  }
+}

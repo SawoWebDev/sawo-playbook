@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+# reference screenshots stay local only (spec §19)
+assets/reference/*
+!assets/reference/.gitkeep
+backups/
+*.tsbuildinfo

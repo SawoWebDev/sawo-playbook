@@ -1,0 +1,146 @@
+name: gembadocs
+
+x-api-env: &api-env
+  NODE_ENV: development
+  PORT: 4000
+  DATABASE_URL: postgresql://gemba:gemba@db:5432/gembadocs?schema=public
+  REDIS_URL: redis://redis:6379
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-change-me}
+  JWT_ACCESS_TTL_SECONDS: 900
+  REFRESH_TTL_DAYS: 30
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+  PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+  S3_ENDPOINT: http://minio:9000
+  S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+  S3_REGION: us-east-1
+  S3_BUCKET: gembadocs
+  S3_ACCESS_KEY: gemba
+  S3_SECRET_KEY: gemba-minio-secret
+  PDF_RENDERER_URL: http://gotenberg:3000
+  PRISMA_HIDE_UPDATE_MESSAGE: "1"
+  SMTP_URL: smtp://mailpit:1025
+  # Upload malware scanning: `CLAMAV_HOST=clamav docker compose --profile security up -d`
+  CLAMAV_HOST: ${CLAMAV_HOST:-}
+  MAIL_FROM: GembaDocs <no-reply@gembadocs.local>
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gemba
+      POSTGRES_PASSWORD: gemba
+      POSTGRES_DB: gembadocs
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports: ["${GEMBA_DB_PORT:-5432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gemba -d gembadocs"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["${GEMBA_REDIS_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z  # official minio/minio images are no longer published
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: gemba
+      MINIO_ROOT_PASSWORD: gemba-minio-secret
+    volumes:
+      - miniodata:/data
+    ports: ["${GEMBA_MINIO_PORT:-9000}:9000", "${GEMBA_MINIO_CONSOLE_PORT:-9001}:9001"]
+
+  # Optional ClamAV daemon (first start downloads signatures, ~1-2 min)
+  clamav:
+    profiles: ["security"]
+    image: clamav/clamav:stable
+
+  # Dev mail catcher: invitation / password-reset emails at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["${GEMBA_MAIL_UI_PORT:-8025}:8025"]
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports: ["${GEMBA_PDF_PORT:-3001}:3000"]
+
+  api:
+    build:
+      context: ./apps/api
+      target: dev
+    environment: *api-env
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_started }
+    volumes:
+      - ./apps/api:/app
+      - api_node_modules:/app/node_modules
+    ports: ["${GEMBA_API_PORT:-4000}:4000"]
+
+  # Background jobs (BullMQ): deletion finalisation, retention purge, media cleanup
+  worker:
+    build:
+      context: ./apps/api
+      target: dev
+    environment: *api-env
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      api: { condition: service_started }
+    volumes:
+      - ./apps/api:/app
+      - api_node_modules:/app/node_modules
+    command: ["sh", "-c", "sleep 20 && npm run worker:dev"]
+
+  web:
+    build:
+      context: ./apps/web
+      target: dev
+    environment:
+      API_INTERNAL_URL: http://api:4000
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "true"
+    depends_on: [api]
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
+    ports: ["${GEMBA_WEB_PORT:-3000}:3000"]
+
+  # Test runner: `docker compose run --rm api-test`
+  api-test:
+    profiles: ["test"]
+    build:
+      context: ./apps/api
+      target: dev
+    environment:
+      <<: *api-env
+      NODE_ENV: test
+      DATABASE_URL: postgresql://gemba:gemba@db:5432/gembadocs_test?schema=public
+      S3_BUCKET: gembadocs-test
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_started }
+      gotenberg: { condition: service_started }
+    volumes:
+      - ./apps/api:/app
+      - api_node_modules:/app/node_modules
+    command: ["sh", "-c", "npm install --no-audit --no-fund --loglevel=error && npx prisma generate >/dev/null && npx prisma migrate deploy && npm test -- $${TEST_ARGS:-}"]
+
+volumes:
+  pgdata:
+  miniodata:
+  api_node_modules:
+  web_node_modules:
+  web_next:

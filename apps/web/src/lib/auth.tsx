@@ -1,0 +1,43 @@
+'use client';
+
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import * as client from './api';
+import type { SessionUser } from './api';
+
+interface AuthState {
+  user: SessionUser | null;
+  loading: boolean;
+  login: typeof client.login;
+  signup: typeof client.signup;
+  logout: typeof client.logout;
+}
+
+const AuthContext = createContext<AuthState | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const off = client.onSessionChange(setUser);
+    // Restore the session from the HttpOnly refresh cookie on page load.
+    client.refreshSession().finally(() => setLoading(false));
+    return () => {
+      off();
+    };
+  }, []);
+
+  return (
+    <AuthContext.Provider
+      value={{ user, loading, login: client.login, signup: client.signup, logout: client.logout }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
+  return ctx;
+}
