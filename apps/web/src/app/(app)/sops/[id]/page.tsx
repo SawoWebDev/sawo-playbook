@@ -7,7 +7,7 @@ import { SopStatusBadge, VersionStateBadge } from '@/components/StatusBadge';
 import { StepsView } from '@/components/StepsView';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { errorMessage, fmtDate, fmtDateTime, fmtDuration } from '@/lib/format';
+import { errorMessage, fmtDate, fmtDateTime, fmtDuration, plural } from '@/lib/format';
 import { allowed } from '@/lib/permissions';
 import type { ApprovalHistory, SopDetail, VersionDetail } from '@/lib/types';
 
@@ -137,7 +137,7 @@ function SopDetailView() {
               <div className="row" style={{ marginBottom: 12 }}>
                 <strong>Version {v.label}</strong>
                 <VersionStateBadge state={v.lifecycleState} />
-                <span className="badge">{v.steps.length} steps</span>
+                <span className="badge">{plural(v.steps.length, 'step')}</span>
                 <span className="badge">Cycle time {fmtDuration(v.cycleTimeSeconds)}</span>
                 {v.publishedAt && <span className="muted">Published {fmtDate(v.publishedAt)}{v.publishedBy ? ` by ${v.publishedBy.name}` : ''}</span>}
               </div>

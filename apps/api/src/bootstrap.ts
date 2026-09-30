@@ -12,7 +12,10 @@ export function configureApp(app: INestApplication): INestApplication {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
+  // Requests arrive via the Next.js proxy (and usually a TLS proxy in front of it), all on
+  // private networks. Trusting private-network hops makes req.ip the real client address
+  // (rate limiting, audit log) while X-Forwarded-For from a public peer is still ignored.
   const http = app.getHttpAdapter().getInstance();
-  http.set?.('trust proxy', 1);
+  http.set?.('trust proxy', process.env.TRUST_PROXY ?? 'loopback, linklocal, uniquelocal');
   return app;
 }

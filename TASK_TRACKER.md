@@ -11,8 +11,8 @@
 - **Last updated:** 2026-09-30 — Session 1
 - **Current phase:** Phase 10 — Full Regression & Hardening (Phase 3 blocked on video-stack decision; Phase 9 optional)
 - **Last completed step:** Phase 10 core done — BullMQ worker + retention/purge + media cleanup (4 tests), prod images + `docker-compose.prod.yml`, CSP, security checklist, README. **Full API suite 168/168 green**, `next build` clean.
-- **Next action (pick up here):** All buildable phases are done. Remaining optional work: nonce-based CSP, virtualised grids, Phase 9 marketing site. **Blocked on business decisions (§18):** Phase 3 (video stack, Chrome plugin), Green/Red QR meaning, confirm quorum=3 / public viewing default. Ask the user for these decisions or for commit/PR.
-- **Known issues / notes:** see "How to run" below. Initial commit `b095cff` on `main` (no remote configured). Full suite: 13 files / 179 tests green.
+- **Next action (pick up here):** Browser UAT passed (Playwright 17/17 + visual pass). Remaining: production deployment verification (real secrets/TLS/domain via `docker-compose.prod.yml`), first GitHub CI run once a remote exists, hardening (nonce CSP, disk encryption, backup schedule). Business decisions pending: Phase 3 video stack / Chrome plugin, Green/Red QR, confirm quorum=3 & public QR viewing off.
+- **Known issues / notes:** see "How to run" below. Initial commit `b095cff` on `main` (no remote configured). Full suite: 13 files / 179 API tests + 17 Playwright browser tests green.
 - **Gotcha:** when editing files with Python on this Windows host always use `open(p, encoding='utf-8')` — the default cp1252 codec corrupted non-ASCII chars once (fixed).
 
 ### How to run (everything in Docker)
@@ -130,6 +130,20 @@ docker compose --profile test build api-test               # rebuild after packa
 - [x] `GET /api/search?q=` prefix queries; published content for all, draft content only for Editor/Approver+
 - [x] Tests `test/analytics.e2e-spec.ts` (11) incl. cross-tenant
 - [x] Web `/analytics` dashboard (tiles, stacked daily SVG chart, top lists), topbar search → `/search`
+## UAT — Browser automation (Playwright)
+- [x] `e2e/` project (Playwright 1.63, official Docker image), compose services `web-e2e` (production web build) + `e2e` (profile `e2e`), CI job `e2e`
+- [x] Specs: `sop-journey` (signup → invites via Mailpit → SOP + step image → submit → 3-approver quorum, author blocked → publish → QR/labels/landing → checklist → kiosk → skills → new version), `auth` (validation, reset via email, ?next safety), `kanbans` (bulk import errors/success, filter, bulk edit, create), `mfa`, `navigation` (all pages, operator restrictions, folders, search, settings, analytics)
+- [x] Fix found while preparing: API `trust proxy` now trusts private-network hops → real client IP for rate limiting + audit (was the web container IP for everyone)
+- [x] Fix: "1 steps" pluralisation
+- [x] Suite green: 17/17, run 4× (stable) against prod web build + running api/db/minio/gotenberg/mailpit
+- [x] Real bug fixed: Settings page sent read-only `updatedAt` → API rejected every save (never worked from UI)
+- [x] Test-side fixes: exact locators, wait for navigation after save, global setup waits for stack health, 24-char QR token parse
+- [x] Visual pass via screenshot tour (`e2e/tests/visual-review.spec.ts`, `E2E_REVIEW=1 … --grep @review`, 23 screenshots desktop 1280 + phone 390)
+- [x] Mobile fixes: page-level horizontal overflow on Users/Skills (tables now scroll in-box), squeezed topbar search (own row), nav labels wrapping, stretched mobile nav
+- Known test-env limitation: signed MinIO image URLs use `localhost:9000`, unreachable from the Playwright container → images show as broken there only (verified reachable from host)
+- **UAT status: PASSED** (functional automation + visual pass). Production deployment still unverified.
+- Note: dev web server takes ~2 min per first page compile on this Windows bind mount → browser tests use the prod web build
+
 ## Phase 9 — Marketing site (optional)
 - [ ] Not started (optional per spec)
 

@@ -21,14 +21,20 @@ docker compose up -d --build      # db, redis, minio, gotenberg, api, worker, we
 open http://localhost:3000        # create an organization via "Create an account"
 ```
 Ports can be changed with `GEMBA_WEB_PORT`, `GEMBA_API_PORT`, `GEMBA_DB_PORT`, `GEMBA_REDIS_PORT`, `GEMBA_MINIO_PORT`, `GEMBA_PDF_PORT`.
-Invitation / password-reset links are printed in the `api` container log (`docker compose logs api`) until SMTP is configured.
+Invitation / password-reset emails are delivered to Mailpit in dev: http://localhost:8025.
 
 ## Tests
 ```bash
 docker compose --profile test run --rm api-test                         # full suite
 docker compose --profile test run --rm -e TEST_ARGS=sops api-test       # one file
 ```
-The suite includes the standing gates required by the spec: cross-tenant isolation for every module,
+Browser (Playwright) tests against the running stack, using a production build of the web app:
+```bash
+docker compose --profile e2e up -d --build web-e2e
+docker compose --profile e2e run --rm e2e                                   # 17 UI tests
+E2E_REVIEW=1 docker compose --profile e2e run --rm -e E2E_ARGS="--grep @review" e2e   # screenshot tour → e2e/review/
+```
+The API suite includes the standing gates required by the spec: cross-tenant isolation for every module,
 published-version immutability at all three layers, the Invariant #19 concurrency test and approval-round isolation.
 
 ## Production

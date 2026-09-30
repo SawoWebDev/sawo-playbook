@@ -30,7 +30,8 @@ export default function SettingsPage() {
   async function save(e: FormEvent) {
     e.preventDefault();
     try {
-      setOrg(await api<OrgInfo>('/organization/settings', { method: 'PATCH', body: org!.settings }));
+      const { approvalQuorum, allowSelfApproval, publicSopViewing } = org!.settings;
+      setOrg(await api<OrgInfo>('/organization/settings', { method: 'PATCH', body: { approvalQuorum, allowSelfApproval, publicSopViewing } }));
       setMsg({ ok: true, text: 'Settings saved.' });
     } catch (err) {
       setMsg({ ok: false, text: errorMessage(err) });

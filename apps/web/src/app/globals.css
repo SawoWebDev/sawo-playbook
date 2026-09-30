@@ -82,11 +82,20 @@ label { display: block; font-weight: 500; margin-bottom: 4px; }
 .topbar { display: flex; align-items: center; gap: 12px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .main { padding: 24px; max-width: 1280px; width: 100%; }
 
+/* the content column must be allowed to shrink below its content's width */
+.shell > div { min-width: 0; }
+
 @media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; }
-  .sidebar { flex-direction: row; overflow-x: auto; padding: 8px; }
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .sidebar { flex-direction: row; overflow-x: auto; padding: 8px; align-self: start; }
+  .sidebar a { white-space: nowrap; }
   .sidebar .section, .sidebar .brand { display: none; }
   .main { padding: 16px; }
+  .topbar { flex-wrap: wrap; padding: 10px 16px; }
+  .topbar form { order: 2; flex: 1 1 100% !important; max-width: none !important; }
+  /* wide tables scroll inside their own box instead of widening the page */
+  .table { display: block; overflow-x: auto; white-space: nowrap; }
+  .table td, .table th { white-space: nowrap; }
 }
 
 /* SOP cards & steps */

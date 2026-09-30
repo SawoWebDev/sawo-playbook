@@ -23,3 +23,7 @@ export function fmtDuration(totalSeconds: number): string {
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : 'Something went wrong';
 }
+
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}

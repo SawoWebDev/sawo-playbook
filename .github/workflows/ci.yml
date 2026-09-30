@@ -31,3 +31,36 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+
+  e2e:
+    # Browser tests (Playwright) against the full Docker stack
+    runs-on: ubuntu-latest
+    needs: [api]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start stack
+        run: docker compose up -d --build db redis minio gotenberg mailpit api worker web
+      - name: Wait for web + API
+        run: |
+          for i in $(seq 1 120); do
+            curl -sf http://localhost:3000/api/health && exit 0
+            sleep 5
+          done
+          docker compose logs api web
+          exit 1
+      - name: Run Playwright suite
+        run: |
+          docker compose --profile e2e up -d --build web-e2e
+          docker compose --profile e2e run --rm -e CI=true e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 14
+      - name: Tear down
+        if: always()
+        run: docker compose --profile e2e down -v

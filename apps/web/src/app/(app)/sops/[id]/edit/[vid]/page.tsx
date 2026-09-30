@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { api, apiRaw } from '@/lib/api';
 import { buildTree, flatten, type FolderRow } from '@/lib/folders';
-import { errorMessage, fmtDuration } from '@/lib/format';
+import { errorMessage, fmtDuration, plural } from '@/lib/format';
 import type { MediaItem, SopDetail, SopListItem, VersionConfig, VersionDetail } from '@/lib/types';
 
 interface DraftStep {
@@ -301,7 +301,7 @@ export default function SopEditorPage() {
 
       <div className="row" style={{ marginBottom: 8 }}>
         <h2 style={{ margin: 0 }}>Steps</h2>
-        <span className="badge">{steps.length} steps</span>
+        <span className="badge">{plural(steps.length, 'step')}</span>
         <span className="badge">Cycle time {fmtDuration(cycle)}</span>
       </div>
 
