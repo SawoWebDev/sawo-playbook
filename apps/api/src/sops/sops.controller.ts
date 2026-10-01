@@ -1,5 +1,5 @@
 import { TrackActivity } from '../analytics/activity.service';
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, StreamableFile } from '@nestjs/common';
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Response } from 'express';
 import { AuthUser } from '../common/auth-user';
@@ -61,6 +61,21 @@ export class SopsController {
   @RequirePermission(Permission.SopEdit)
   archive(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ArchiveDto) {
     return this.sops.setArchived(actor, id, dto.archived);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermission(Permission.SopEdit)
+  @TrackActivity({ event: 'sop.deleted', entity: 'sop', id: 'param:id' })
+  remove(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sops.deleteSop(actor, id);
+  }
+
+  @Post(':id/duplicate')
+  @RequirePermission(Permission.SopEdit)
+  @TrackActivity({ event: 'sop.created', entity: 'sop', id: 'result:id' })
+  duplicate(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sops.duplicate(actor, id);
   }
 
   @Get(':id/current')

@@ -117,6 +117,24 @@ label { display: block; font-weight: 500; margin-bottom: 4px; }
 .sop-card:hover { text-decoration: none; box-shadow: 0 2px 10px rgba(20,40,80,.2); background: #fafafa; }
 .sop-card .name { font-weight: 500; font-size: 14px; margin: 0 26px 10px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sop-card .more { position: absolute; top: 12px; right: 14px; color: #9a9a9a; letter-spacing: 1px; }
+/* card wrapper so the ••• dropdown sits on top of the card link, not inside it */
+.sop-tile { position: relative; }
+.sop-tile .sop-card { height: 100%; }
+.sop-tile .card-menu { position: absolute; top: 8px; right: 10px; }
+.card-menu .more { border: 0; background: none; padding: 2px 6px; font: inherit; color: #9a9a9a; letter-spacing: 1px; cursor: pointer; border-radius: 4px; }
+.card-menu .more:hover, .card-menu .more[aria-expanded="true"] { background: var(--surface-2); color: #333; }
+.menu-list.icon-menu { min-width: 250px; padding: 6px; }
+.menu-list.icon-menu button { display: flex; align-items: center; gap: 12px; padding: 9px 12px; font-size: 14px; line-height: 1.2; color: var(--text); }
+.menu-list.icon-menu button svg { flex: none; display: block; width: 18px; height: 18px; color: #444; }
+.menu-list.icon-menu button:disabled { color: var(--muted); }
+.menu-list.icon-menu button:disabled svg { color: var(--muted); }
+.menu-list.icon-menu button.danger, .menu-list.icon-menu button.danger svg { color: var(--danger); }
+.menu-list.icon-menu button.danger { border-top: 1px solid var(--border); border-radius: 0 0 6px 6px; margin-top: 4px; }
+.menu-list.icon-menu.up { top: auto; bottom: calc(100% + 4px); }
+.menu-list.icon-menu { max-height: max(220px, calc(100vh - 160px)); overflow-y: auto; }
+.menu-list.icon-menu .note { font-size: 11px; margin-left: auto; padding-left: 8px; }
+.dialog-scroll { max-height: 60vh; overflow: auto; }
+.dialog-scroll .table { font-size: 13px; }
 .sop-card .line { font-size: 10.5px; line-height: 16px; color: #555; }
 .sop-card .line b { font-weight: 500; color: #1a1a1a; }
 .sop-card .badge { position: absolute; top: 10px; right: 34px; font-size: 10px; }

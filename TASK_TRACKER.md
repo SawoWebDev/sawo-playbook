@@ -197,4 +197,6 @@ docker compose --profile test build api-test               # rebuild after packa
 - SOP detail page reworked (Edit + ⋮ menu with Versions/Details/Archive); View Step By Step moved into app layout (`(app)/kiosk/[id]`).
 - Step images: same-size white 4:3 frames, no cropping, time badge above, pop-up `Lightbox`; editor image fixes.
 - Kanbans list restyled like STD OPS (Create New menu, filter/sort icons, thumbnail tiles, ••• menu); API list/get now return `createdBy`.
+- STD OPS card ••• menu (`components/SopCardMenu.tsx`): Edit, Duplicate (`POST /api/sops/:id/duplicate`), Translate (coming soon), Update Training Record, Training History, Add to Folder, Change History, View or Print PDF, Delete for never-published SOPs (`DELETE /api/sops/:id`, 409 once published). 49 SOP API tests green.
+- SOP PDF header: SAWO logo moved to the left.
 - Pending: update `apps/api/src/pdf/sawo-logo.ts` to the new logo; run e2e profile (local Playwright browser download failed).

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
+import { SopCardMenu } from '@/components/SopCardMenu';
 import { SopStatusBadge } from '@/components/StatusBadge';
 import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api } from '@/lib/api';
@@ -40,6 +41,7 @@ function SopsList() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [creating, setCreating] = useState<SopType | null>(null);
@@ -166,32 +168,43 @@ function SopsList() {
         )}
       </div>
       {error && <div className="error">{error}</div>}
+      {notice && <div className="success">{notice}</div>}
 
       {items.length === 0 ? (
         <p className="muted">No procedures found.</p>
       ) : (
         <div className="sop-grid">
           {items.map((s) => (
-            <Link key={s.id} href={`/sops/${s.id}`} className="sop-card">
-              <div className="name" title={s.name}>
-                {s.name}
-              </div>
-              {s.status !== 'published' && (
-                <span className="badge">
-                  {s.activeVersion?.rejected ? (
-                    <span className="badge badge-red">Rejected</span>
-                  ) : (
-                    <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} />
-                  )}
-                </span>
-              )}
-              <span className="more">•••</span>
-              <div className="line">Reference No: <b>{s.referenceNo}</b></div>
-              <div className="line">Folder: <b>{s.folder?.name ?? 'N/A'}</b></div>
-              <div className="line">Date Raised: <b>{fmtDate(s.createdAt)}</b></div>
-              <div className="line">Created By: <b>{s.createdBy?.name ?? 'N/A'}</b></div>
-              <div className="line">Last Modified: <b>{fmtDate(s.updatedAt)}</b></div>
-            </Link>
+            <div key={s.id} className="sop-tile">
+              <Link href={`/sops/${s.id}`} className="sop-card">
+                <div className="name" title={s.name}>
+                  {s.name}
+                </div>
+                {s.status !== 'published' && (
+                  <span className="badge">
+                    {s.activeVersion?.rejected ? (
+                      <span className="badge badge-red">Rejected</span>
+                    ) : (
+                      <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} />
+                    )}
+                  </span>
+                )}
+                <div className="line">Reference No: <b>{s.referenceNo}</b></div>
+                <div className="line">Folder: <b>{s.folder?.name ?? 'N/A'}</b></div>
+                <div className="line">Date Raised: <b>{fmtDate(s.createdAt)}</b></div>
+                <div className="line">Created By: <b>{s.createdBy?.name ?? 'N/A'}</b></div>
+                <div className="line">Last Modified: <b>{fmtDate(s.updatedAt)}</b></div>
+              </Link>
+              <SopCardMenu
+                sop={s}
+                folders={folderOptions}
+                onError={setError}
+                onChanged={(msg) => {
+                  setNotice(msg ?? null);
+                  void load(0);
+                }}
+              />
+            </div>
           ))}
         </div>
       )}

@@ -418,6 +418,55 @@ describe('copy-on-write versions + Invariant #19 via the API', () => {
   });
 });
 
+describe('duplicate SOP', () => {
+  it('creates a new draft SOP with copied config, steps and media; the source is untouched', async () => {
+    const { sopId, versionId, mediaId } = await publishedSop(a, 'Original');
+    const r = await ctx.http().post(`/api/sops/${sopId}/duplicate`).set(as(a, 'EDITOR')).expect(201);
+    expect(r.body).toMatchObject({ name: 'Original (Copy)', status: 'draft' });
+    expect(r.body.id).not.toBe(sopId);
+    expect(r.body.referenceNo).not.toBe((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).referenceNo);
+    const v = await ctx.http().get(`/api/sops/${r.body.id}/versions/${r.body.activeVersionId}`).set(as(a, 'EDITOR')).expect(200);
+    expect(v.body).toMatchObject({ versionSequence: 1, lifecycleState: 'DRAFT' });
+    expect(v.body.steps.map((s: { plannedTimeSeconds: number }) => s.plannedTimeSeconds)).toEqual([30, 90]);
+    expect(v.body.steps[0].media[0].id).toBe(mediaId);
+    expect(await ctx.prisma.sopStep.count({ where: { sopVersionId: versionId } })).toBe(2);
+  });
+
+  it('copies an open draft in preference to the published version', async () => {
+    const { sopId } = await publishedSop(a, 'Has draft');
+    const d = await ctx.http().post(`/api/sops/${sopId}/versions`).set(as(a, 'EDITOR')).expect(201);
+    await saveSteps(a, sopId, d.body.id, [{ description: '<p>Only step</p>', plannedTimeSeconds: 5 }]).then((x) => expect(x.status).toBe(200));
+    const r = await ctx.http().post(`/api/sops/${sopId}/duplicate`).set(as(a, 'EDITOR')).expect(201);
+    const v = await ctx.http().get(`/api/sops/${r.body.id}/versions/${r.body.activeVersionId}`).set(as(a, 'EDITOR')).expect(200);
+    expect(v.body.steps).toHaveLength(1);
+  });
+
+  it('a never-published duplicate can be deleted; it disappears from the list and its draft is abandoned', async () => {
+    const { sopId } = await publishedSop(a, 'Keep me');
+    const copy = await ctx.http().post(`/api/sops/${sopId}/duplicate`).set(as(a, 'EDITOR')).expect(201);
+    await ctx.http().delete(`/api/sops/${copy.body.id}`).set(as(a, 'OPERATOR')).expect(403);
+    await ctx.http().delete(`/api/sops/${copy.body.id}`).set(as(b, 'EDITOR')).expect(404);
+    await ctx.http().delete(`/api/sops/${copy.body.id}`).set(as(a, 'EDITOR')).expect(204);
+    await ctx.http().get(`/api/sops/${copy.body.id}`).set(as(a, 'EDITOR')).expect(404);
+    const list = await ctx.http().get('/api/sops?search=Keep%20me').set(as(a, 'EDITOR')).expect(200);
+    expect(list.body.items.map((s: { id: string }) => s.id)).toEqual([sopId]);
+    const v = await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: copy.body.activeVersionId } });
+    expect(v.lifecycleState).toBe('ABANDONED');
+  });
+
+  it('a published SOP cannot be deleted (409)', async () => {
+    const { sopId } = await publishedSop(a, 'Published, not deletable');
+    await ctx.http().delete(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).expect(409);
+    await ctx.http().get(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).expect(200);
+  });
+
+  it('Operator cannot duplicate (403); cross-tenant is 404', async () => {
+    const { sopId } = await publishedSop(a, 'Guarded');
+    await ctx.http().post(`/api/sops/${sopId}/duplicate`).set(as(a, 'OPERATOR')).expect(403);
+    await ctx.http().post(`/api/sops/${sopId}/duplicate`).set(as(b, 'EDITOR')).expect(404);
+  });
+});
+
 describe('SOP.status derivation (Invariant #18)', () => {
   it.each([
     [{ archived: true, activeState: 'DRAFT', hasPublished: true }, 'archived'],

@@ -12,6 +12,8 @@ import { CreateSopDto, ListSopsQuery, SaveStepsDto, UpdateSopDto, UpdateVersionD
 import { ACTIVE_UNPUBLISHED, recomputeSopStatus, versionLabel } from './sop-status';
 import { SopVersionRepository, StepWrite } from './sop-version.repository';
 
+type CopyableStep = Prisma.SopStepGetPayload<{ include: { media: true } }>;
+
 export const DEFAULT_CONFIG = {
   cover_sheet: false,
   collaborate: false,
@@ -298,7 +300,8 @@ export class SopsService {
 
   // ───────────────────────── commands ─────────────────────────
 
-  async create(actor: AuthUser, dto: CreateSopDto) {
+  /** `seedVersionId`: copy that version's config and steps into the new SOP's first draft (Duplicate). */
+  async create(actor: AuthUser, dto: CreateSopDto, seedVersionId?: string) {
     if (dto.folderId) await this.assertFolder(actor, dto.folderId);
     for (let attempt = 0; attempt < 5; attempt++) {
       const referenceNo = dto.referenceNo?.trim() || (await this.nextReferenceNo(actor.organizationId, attempt));
@@ -315,15 +318,19 @@ export class SopsService {
               createdById: actor.id,
             },
           });
-          await tx.sopVersion.create({
+          const seed = seedVersionId
+            ? await tx.sopVersion.findUniqueOrThrow({ where: { id: seedVersionId }, include: { steps: { include: { media: true } } } })
+            : null;
+          const v = await tx.sopVersion.create({
             data: {
               organizationId: actor.organizationId,
               sopId: sop.id,
               versionSequence: 1,
-              config: DEFAULT_CONFIG,
+              config: (seed?.config as Prisma.InputJsonValue) ?? DEFAULT_CONFIG,
               createdById: actor.id,
             },
           });
+          if (seed) await markAttached(tx, await this.copySteps(tx, actor.organizationId, seed.steps, v.id));
           await recomputeSopStatus(tx, sop.id);
           return sop;
         });
@@ -335,6 +342,43 @@ export class SopsService {
       }
     }
     throw new ConflictException('Could not allocate a reference number');
+  }
+
+  /** Copies an SOP's newest content (open draft, else the published version) into a new SOP. */
+  async duplicate(actor: AuthUser, sopId: string) {
+    const src = await this.findSop(actor, sopId);
+    const seed = (canSeeUnpublished(actor.role) && src.latestDraftVersionId) || src.currentPublishedVersionId;
+    if (!seed) throw new BadRequestException('This SOP has no content to duplicate');
+    const name = `${src.name} (Copy)`.slice(0, 300);
+    return this.create(actor, { name, type: src.type as CreateSopDto['type'], folderId: src.folderId ?? undefined }, seed);
+  }
+
+  private async copySteps(tx: Tx, organizationId: string, steps: CopyableStep[], toVersionId: string): Promise<string[]> {
+    const assetIds: string[] = [];
+    for (const s of steps) {
+      const step = await tx.sopStep.create({
+        data: {
+          organizationId,
+          sopVersionId: toVersionId,
+          order: s.order,
+          title: s.title,
+          description: s.description,
+          isTextOnly: s.isTextOnly,
+          isCritical: s.isCritical,
+          usesOkNotokMedia: s.usesOkNotokMedia,
+          plannedTimeSeconds: s.plannedTimeSeconds,
+          linkedSopId: s.linkedSopId,
+          linkedSopVersionId: s.linkedSopVersionId,
+        },
+      });
+      if (s.media.length) {
+        await tx.sopStepMedia.createMany({
+          data: s.media.map((m) => ({ sopStepId: step.id, mediaAssetId: m.mediaAssetId, displayOrder: m.displayOrder })),
+        });
+        assetIds.push(...s.media.map((m) => m.mediaAssetId));
+      }
+    }
+    return assetIds;
   }
 
   private async nextReferenceNo(organizationId: string, bump: number): Promise<string> {
@@ -402,31 +446,7 @@ export class SopsService {
             createdById: actor.id,
           },
         });
-        const assetIds: string[] = [];
-        for (const s of base?.steps ?? []) {
-          const step = await tx.sopStep.create({
-            data: {
-              organizationId: actor.organizationId,
-              sopVersionId: v.id,
-              order: s.order,
-              title: s.title,
-              description: s.description,
-              isTextOnly: s.isTextOnly,
-              isCritical: s.isCritical,
-              usesOkNotokMedia: s.usesOkNotokMedia,
-              plannedTimeSeconds: s.plannedTimeSeconds,
-              linkedSopId: s.linkedSopId,
-              linkedSopVersionId: s.linkedSopVersionId,
-            },
-          });
-          if (s.media.length) {
-            await tx.sopStepMedia.createMany({
-              data: s.media.map((m) => ({ sopStepId: step.id, mediaAssetId: m.mediaAssetId, displayOrder: m.displayOrder })),
-            });
-            assetIds.push(...s.media.map((m) => m.mediaAssetId));
-          }
-        }
-        await markAttached(tx, assetIds);
+        await markAttached(tx, await this.copySteps(tx, actor.organizationId, base?.steps ?? [], v.id));
         await recomputeSopStatus(tx, sopId);
         return v.id;
       });
@@ -512,6 +532,27 @@ export class SopsService {
       await recomputeSopStatus(tx, sopId);
     });
     return this.get(actor, sopId);
+  }
+
+  /**
+   * Deletes an SOP that has never been published (e.g. a duplicate that is no longer wanted). Its unpublished
+   * versions are abandoned so their media can be released; published SOPs must be archived instead.
+   */
+  async deleteSop(actor: AuthUser, sopId: string) {
+    await this.findSop(actor, sopId);
+    await this.prisma.$transaction(async (tx) => {
+      // lock the SOP row so a concurrent publish cannot slip in between the check and the delete
+      await tx.$queryRaw`SELECT id FROM sop WHERE id = ${sopId}::uuid FOR UPDATE`;
+      const published = await tx.sopVersion.count({ where: { sopId, lifecycleState: 'PUBLISHED' } });
+      if (published) throw new ConflictException('A published SOP cannot be deleted; archive it instead');
+      const open = await tx.sopVersion.findMany({ where: { sopId, lifecycleState: { in: ACTIVE_UNPUBLISHED } }, select: { id: true } });
+      for (const v of open) await this.repo.lock(tx, actor.organizationId, sopId, v.id);
+      await tx.sopVersion.updateMany({ where: { id: { in: open.map((v) => v.id) } }, data: { lifecycleState: 'ABANDONED' } });
+      const media = await tx.sopStepMedia.findMany({ where: { sopStep: { sopVersionId: { in: open.map((v) => v.id) } } }, select: { mediaAssetId: true } });
+      await reevaluateMedia(tx, media.map((m) => m.mediaAssetId));
+      await recomputeSopStatus(tx, sopId);
+      await tx.sop.update({ where: { id: sopId }, data: { deletedAt: new Date() } });
+    });
   }
 
   /** Shared by workflow services. */

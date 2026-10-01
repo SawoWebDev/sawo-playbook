@@ -90,8 +90,9 @@ export class PdfService {
       for (const s of pages[p]) cards.push(await card(s));
       body.push(`<section class="page">
         <header>
+          <img class="logo" src="${SAWO_LOGO_DATA_URI}" alt="SAWO">
           <h1>${escapeHtml(sop.name)}</h1>
-          <div class="scan"><img class="logo" src="${SAWO_LOGO_DATA_URI}" alt="SAWO"><div><small>Scan To Edit</small><img src="${qr}" alt="QR"></div></div>
+          <div class="scan"><small>Scan To Edit</small><img src="${qr}" alt="QR"></div>
         </header>
         <div class="grid">${cards.join('')}</div>
         <footer>
@@ -114,11 +115,11 @@ export class PdfService {
   body { margin: 0; font-family: ${BRAND_FONT_STACK}; color: ${BRAND.text}; }
   .page { position: relative; width: ${orient === 'portrait' ? '210mm' : '297mm'}; height: ${orient === 'portrait' ? '297mm' : '210mm'}; padding: 10mm 12mm 8mm; page-break-after: always; display: flex; flex-direction: column; overflow: hidden; }
   header { display: flex; justify-content: center; align-items: center; position: relative; height: 22mm; }
-  header h1 { font-size: 16pt; margin: 0; text-align: center; }
-  .scan { position: absolute; right: 0; top: 0; display: flex; gap: 3mm; align-items: flex-end; }
+  header h1 { font-size: 16pt; margin: 0 45mm; text-align: center; }
+  .scan { position: absolute; right: 0; top: 0; }
   .scan small { display: block; font-size: 7pt; text-align: right; }
   .scan img { width: 14mm; height: 14mm; }
-  .logo { height: 14mm; width: auto; }
+  header .logo { position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 15mm; width: auto; }
   .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(${rows}, 1fr); gap: 4mm; margin-top: 2mm; }
   .card { position: relative; background: ${BRAND.tint}; border-radius: 4px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .media { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: stretch; gap: 1mm; padding: 2mm 0; }
