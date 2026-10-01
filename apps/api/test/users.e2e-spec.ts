@@ -73,11 +73,15 @@ describe('invitations', () => {
     const email = uniqueEmail();
     await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'OPERATOR' }).expect(201);
     const first = tokenFromMail(email, 'invite');
-    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'TRAINER' }).expect(201);
+    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'EDITOR' }).expect(201);
     await ctx.http().get(`/api/auth/invitations/${first}`).expect(404);
     const second = tokenFromMail(email, 'invite');
     const d = await ctx.http().get(`/api/auth/invitations/${second}`).expect(200);
-    expect(d.body.role).toBe('TRAINER');
+    expect(d.body.role).toBe('EDITOR');
+  });
+
+  it.each(['APPROVER', 'TRAINER', 'OWNER'] as const)('the %s role cannot be given by invitation', async (role) => {
+    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: uniqueEmail(), role }).expect(role === 'OWNER' ? 403 : 400);
   });
 
   it('rejects inviting an existing user', async () => {
@@ -145,7 +149,8 @@ describe('role change / suspend / remove', () => {
     await ctx.http().patch(`/api/users/${a.users.OWNER.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'EDITOR' }).expect(403);
     await ctx.http().patch(`/api/users/${other.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'EDITOR' }).expect(403);
     await ctx.http().patch(`/api/users/${op.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'ADMIN' }).expect(403);
-    await ctx.http().patch(`/api/users/${op.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'TRAINER' }).expect(200);
+    await ctx.http().patch(`/api/users/${op.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'TRAINER' }).expect(400); // retired role
+    await ctx.http().patch(`/api/users/${op.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'EDITOR' }).expect(200);
   });
 
   it('cannot change your own role', async () => {

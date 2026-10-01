@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, type Role } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate } from '@/lib/format';
-import { ROLE_LABELS } from '@/lib/permissions';
+import { ASSIGNABLE_ROLES, ROLE_LABELS, ROLE_SUMMARY } from '@/lib/permissions';
 
 interface UserRow {
   id: string;
@@ -23,7 +23,6 @@ interface InvitationRow {
   expiresAt: string;
 }
 
-const ASSIGNABLE: Role[] = ['ADMIN', 'EDITOR', 'APPROVER', 'TRAINER', 'OPERATOR'];
 const STATUS_BADGE: Record<UserRow['status'], string> = {
   active: 'badge-green',
   invited: 'badge-blue',
@@ -42,7 +41,7 @@ export default function UsersPage() {
   const [csv, setCsv] = useState('');
   const [showRemoved, setShowRemoved] = useState(false);
 
-  const assignable = ASSIGNABLE.filter((r) => me?.role === 'OWNER' || r !== 'ADMIN');
+  const assignable = ASSIGNABLE_ROLES.filter((r) => me?.role === 'OWNER' || r !== 'ADMIN');
 
   const load = useCallback(async () => {
     try {
@@ -201,6 +200,9 @@ export default function UsersPage() {
         </tbody>
       </table>
 
+      <h2>Access permissions</h2>
+      <AccessTable />
+
       <h2>Pending invitations</h2>
       {invites.length === 0 ? (
         <p className="muted">No pending invitations.</p>
@@ -247,6 +249,7 @@ export default function UsersPage() {
                 </option>
               ))}
             </select>
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{ROLE_SUMMARY[inviteRole]}</div>
           </div>
           <button className="btn btn-primary" type="submit">
             Send invitation
@@ -279,5 +282,44 @@ export default function UsersPage() {
         </form>
       </div>
     </>
+  );
+}
+
+const ACCESS: [string, boolean, boolean, boolean][] = [
+  ['View published SOPs, View Step By Step, print PDFs & QR codes', true, true, true],
+  ['View drafts (read-only)', true, true, true],
+  ['View kanbans and own training record', true, true, true],
+  ['Create, edit, duplicate and delete SOPs (drafts)', true, true, false],
+  ['Approve and publish SOPs', true, true, false],
+  ['Create and edit kanbans and folders', true, true, false],
+  ['Record training for everyone', true, true, false],
+  ['Analytics', true, true, false],
+  ['Manage users, organization settings, audit log', true, false, false],
+];
+
+/** Read-only summary of the three roles (enforced by the API's permission matrix). */
+function AccessTable() {
+  const mark = (on: boolean) => (on ? <span style={{ color: 'var(--success)', fontWeight: 700 }}>✓</span> : <span className="muted">—</span>);
+  return (
+    <table className="table" style={{ marginBottom: 24 }}>
+      <thead>
+        <tr>
+          <th>What</th>
+          <th style={{ width: 90, textAlign: 'center' }}>Admin</th>
+          <th style={{ width: 90, textAlign: 'center' }}>Editor</th>
+          <th style={{ width: 90, textAlign: 'center' }}>Viewer</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ACCESS.map(([what, admin, editor, viewer]) => (
+          <tr key={what}>
+            <td>{what}</td>
+            <td style={{ textAlign: 'center' }}>{mark(admin)}</td>
+            <td style={{ textAlign: 'center' }}>{mark(editor)}</td>
+            <td style={{ textAlign: 'center' }}>{mark(viewer)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

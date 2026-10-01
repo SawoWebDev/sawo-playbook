@@ -26,11 +26,6 @@ interface HistoryRow {
   notes: string | null;
 }
 
-interface Assignment {
-  trainer?: { id: string; name: string };
-  associate?: { id: string; name: string };
-}
-
 /** Quarter-filled circle per competency level (0–4), the classic skills-matrix glyph. */
 function LevelGlyph({ level, size = 26 }: { level: number; size?: number }) {
   const r = size / 2 - 2;
@@ -55,14 +50,10 @@ export default function SkillsPage() {
   const { user } = useAuth();
   const [m, setM] = useState<Matrix | null>(null);
   const [history, setHistory] = useState<HistoryRow[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [editing, setEditing] = useState<{ associateId: string; sopId: string } | null>(null);
   const [level, setLevel] = useState(0);
   const [notes, setNotes] = useState('');
-  const [assignTrainer, setAssignTrainer] = useState('');
-  const [assignAssociate, setAssignAssociate] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const canAssign = allowed(user?.role, 'manageUsers');
   const canUpdate = allowed(user?.role, 'updateSkills');
 
   const load = useCallback(async () => {
@@ -70,7 +61,6 @@ export default function SkillsPage() {
       const [matrix, hist] = await Promise.all([api<Matrix>('/skills/matrix'), api<HistoryRow[]>('/skills/history')]);
       setM(matrix);
       setHistory(hist);
-      if (canUpdate) setAssignments(await api<Assignment[]>('/skills/trainers'));
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -162,77 +152,6 @@ export default function SkillsPage() {
             <span className="outdated-dot" style={{ position: 'static', display: 'inline-block' }} /> assessed against an older version of the SOP — reassessment recommended.
           </p>
         </div>
-      )}
-
-      {canAssign && (
-        <>
-          <h2>Trainer assignments</h2>
-          <div className="row card" style={{ marginBottom: 8 }}>
-            <select value={assignTrainer} onChange={(e) => setAssignTrainer(e.target.value)} style={{ width: 220 }}>
-              <option value="">Trainer…</option>
-              {m.associates
-                .filter((a) => a.role === 'TRAINER')
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-            </select>
-            <select value={assignAssociate} onChange={(e) => setAssignAssociate(e.target.value)} style={{ width: 220 }}>
-              <option value="">Trainee…</option>
-              {m.associates.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn-primary"
-              disabled={!assignTrainer || !assignAssociate}
-              onClick={async () => {
-                try {
-                  setAssignments(await api<Assignment[]>('/skills/trainers', { method: 'POST', body: { trainerId: assignTrainer, associateId: assignAssociate } }));
-                  await load();
-                } catch (e) {
-                  setError(errorMessage(e));
-                }
-              }}
-            >
-              Assign
-            </button>
-          </div>
-          <table className="table">
-            <tbody>
-              {assignments.map((x) => (
-                <tr key={`${x.trainer?.id}-${x.associate?.id}`}>
-                  <td>{x.trainer?.name}</td>
-                  <td>trains</td>
-                  <td>{x.associate?.name}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={async () => {
-                        try {
-                          await api(`/skills/trainers/${x.trainer?.id}/${x.associate?.id}`, { method: 'DELETE' });
-                          await load();
-                        } catch (e) {
-                          setError(errorMessage(e));
-                        }
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {assignments.length === 0 && (
-                <tr>
-                  <td className="muted">No trainer assignments yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </>
       )}
 
       <h2>Training history</h2>

@@ -35,29 +35,29 @@ describe('trainer assignment', () => {
     await ctx.http().post('/api/skills/trainers').set(as(a, 'EDITOR')).send({ trainerId: a.users.TRAINER.user.id, associateId: other.user.id }).expect(403);
     await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.EDITOR.user.id, associateId: other.user.id }).expect(400);
     await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.TRAINER.user.id, associateId: trainee.user.id }).expect(409);
-    const list = await ctx.http().get('/api/skills/trainers').set(as(a, 'TRAINER')).expect(200);
+    const list = await ctx.http().get('/api/skills/trainers').set(as(a, 'ADMIN')).expect(200);
     expect(list.body.map((x: { associate: { id: string } }) => x.associate.id)).toEqual([trainee.user.id]);
   });
 });
 
 describe('assessments', () => {
-  it('Trainer assesses an assigned trainee → SkillAssessment + SkillRecord pinned to the published version', async () => {
-    const r = await assess(as(a, 'TRAINER'), { associateId: trainee.user.id, sopId, level: 2, notes: 'Good progress' }).expect(201);
+  it('Editor records training → SkillAssessment + SkillRecord pinned to the published version', async () => {
+    const r = await assess(as(a, 'EDITOR'), { associateId: trainee.user.id, sopId, level: 2, notes: 'Good progress' }).expect(201);
     expect(r.body.sopVersionId).toBe(v1);
     const rec = await ctx.prisma.skillRecord.findUniqueOrThrow({ where: { associateId_sopId: { associateId: trainee.user.id, sopId } } });
     expect(rec).toMatchObject({ currentLevel: 2, currentSopVersionId: v1, lastAssessmentId: r.body.id });
     expect(await ctx.prisma.auditLog.count({ where: { action: 'skills.assessed', entityId: r.body.id } })).toBe(1);
   });
 
-  it('Trainer cannot assess someone who is not their trainee, nor themselves', async () => {
-    await assess(as(a, 'TRAINER'), { associateId: other.user.id, sopId, level: 1 }).expect(403);
-    await assess(as(a, 'TRAINER'), { associateId: a.users.TRAINER.user.id, sopId, level: 1 }).expect(403);
+  it('nobody can assess themselves', async () => {
+    await assess(as(a, 'EDITOR'), { associateId: a.users.EDITOR.user.id, sopId, level: 1 }).expect(403);
+    await assess(as(a, 'ADMIN'), { associateId: a.users.ADMIN.user.id, sopId, level: 1 }).expect(403);
   });
 
-  it('Operators/Editors/Approvers cannot assess; levels outside 0–4 are rejected', async () => {
+  it('Viewers and the retired Approver/Trainer roles cannot assess; levels outside 0–4 are rejected', async () => {
     await assess(as(a, 'OPERATOR'), { associateId: other.user.id, sopId, level: 1 }).expect(403);
-    await assess(as(a, 'EDITOR'), { associateId: other.user.id, sopId, level: 1 }).expect(403);
     await assess(as(a, 'APPROVER'), { associateId: other.user.id, sopId, level: 1 }).expect(403);
+    await assess(as(a, 'TRAINER'), { associateId: trainee.user.id, sopId, level: 1 }).expect(403);
     await assess(as(a, 'ADMIN'), { associateId: other.user.id, sopId, level: 5 }).expect(400);
   });
 
@@ -114,16 +114,17 @@ describe('assessments', () => {
 });
 
 describe('field-level visibility (§7.2)', () => {
-  it('Operator sees only their own row; Trainer sees self + trainees; Admin sees everyone', async () => {
+  it('Viewer sees only their own row (read-only); Editor and Admin see and edit everyone', async () => {
     const op = await ctx.http().get('/api/skills/matrix').set(trainee.auth).expect(200);
     expect(op.body.associates.map((x: { id: string }) => x.id)).toEqual([trainee.user.id]);
     expect(op.body.associates[0].editable).toBe(false);
-    const tr = await ctx.http().get('/api/skills/matrix').set(as(a, 'TRAINER')).expect(200);
-    expect(tr.body.associates.map((x: { id: string }) => x.id).sort()).toEqual([a.users.TRAINER.user.id, trainee.user.id].sort());
-    expect(tr.body.associates.find((x: { id: string }) => x.id === trainee.user.id).editable).toBe(true);
+    const ed = await ctx.http().get('/api/skills/matrix').set(as(a, 'EDITOR')).expect(200);
+    expect(ed.body.associates.length).toBeGreaterThanOrEqual(7);
+    expect(ed.body.associates.find((x: { id: string }) => x.id === trainee.user.id).editable).toBe(true);
+    expect(ed.body.associates.find((x: { id: string }) => x.id === a.users.EDITOR.user.id).editable).toBe(false); // not self
     const ad = await ctx.http().get('/api/skills/matrix').set(as(a, 'ADMIN')).expect(200);
     expect(ad.body.associates.length).toBeGreaterThanOrEqual(7);
-    await ctx.http().get('/api/skills/matrix').set(as(a, 'EDITOR')).expect(403);
+    await ctx.http().get('/api/skills/matrix').set(as(a, 'TRAINER')).expect(403); // retired role
   });
 
   it('Operator cannot read another associate’s history', async () => {

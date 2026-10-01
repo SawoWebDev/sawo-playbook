@@ -39,9 +39,12 @@ export const DEFAULT_CONFIG = {
 };
 export type VersionConfig = typeof DEFAULT_CONFIG;
 
-/** Editors (drafting) and Approvers (reviewing) may see unpublished versions; everyone else only published. */
+/**
+ * Every role may see unpublished (draft) versions — Viewers read drafts too, they just cannot change anything.
+ * Kept as a function so call sites stay explicit about the rule.
+ */
 export function canSeeUnpublished(role: OrgRole): boolean {
-  return roleHasPermission(role, Permission.SopEdit) || roleHasPermission(role, Permission.SopApprove);
+  return roleHasPermission(role, Permission.SopView);
 }
 
 const userBrief = { select: { id: true, name: true } } as const;

@@ -12,6 +12,7 @@ import { splitCsvLine } from '../common/csv';
 import { hashToken, TokenService } from '../auth/token.service';
 import { normaliseEmail } from '../auth/auth.service';
 import { AuthUser } from '../common/auth-user';
+import { ASSIGNABLE_ROLES } from '../common/permissions';
 import { RequestMeta } from '../common/decorators';
 import { env } from '../config/env';
 import { MailService } from '../mail/mail.service';
@@ -66,6 +67,7 @@ export class UsersService {
   /** Roles an actor may assign via invite or role change. Ownership transfer is out of scope. */
   private assertAssignable(actor: AuthUser, role: OrgRole) {
     if (role === 'OWNER') throw new ForbiddenException('The Owner role cannot be assigned');
+    if (!ASSIGNABLE_ROLES.includes(role)) throw new BadRequestException('Role must be Admin, Editor or Viewer');
     if (actor.role === 'ADMIN' && role === 'ADMIN') {
       throw new ForbiddenException('Admins cannot grant the Admin role');
     }
@@ -146,7 +148,8 @@ export class UsersService {
     const seen = new Set<string>();
     for (const r of parsed) {
       const email = r.email ? normaliseEmail(r.email) : '';
-      const role = r.role?.trim().toUpperCase();
+      const raw = r.role?.trim().toUpperCase();
+      const role = raw === 'VIEWER' ? 'OPERATOR' : raw; // "Viewer" is the display name of OPERATOR
       if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
         result.errors.push({ row: r.row, email: r.email, error: 'Invalid email' });
         continue;

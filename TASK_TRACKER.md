@@ -204,4 +204,5 @@ docker compose --profile test build api-test               # rebuild after packa
 - Kanban ordering URL optional (migration `20261001000000_kanban_url_optional`). 12 kanban API tests green.
 - Nav: PRODUCT label removed; SOP editor Back goes to the STD OPS list.
 - Kanban print rebuilt to the reference GembaDocs kanban PDF (`src/kanbans/kanban-print.ts`): page 1 option 1 small fold-and-cut strip + wide bin label, page 2 option 2 large; Code 128 barcodes (`src/pdf/code128.ts`, unit-tested); text wraps instead of truncating; optional `KANBAN_VIDEO_URL` for the video-explainer QR.
+- Three working roles (+ Owner): Admin (everything), Editor (create/edit/approve/publish SOPs & kanbans, record training), Viewer = OPERATOR (read-only incl. drafts). APPROVER/TRAINER retired → EDITOR (migration `20261001010000_three_roles`), no longer assignable; Access permissions table on Manage Users; trainer assignments UI removed. 199 API tests green.
 - Pending: update `apps/api/src/pdf/sawo-logo.ts` to the new logo; run e2e profile (local Playwright browser download failed).

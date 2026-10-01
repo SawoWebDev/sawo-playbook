@@ -26,10 +26,10 @@ export function sopHelpers(ctx: () => TestContext) {
   async function publishFlow(t: Tenant, sopId: string, versionId: string) {
     const http = ctx().http;
     await http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(t, 'EDITOR')).send({}).expect(200);
-    for (const r of ['APPROVER', 'ADMIN', 'OWNER'] as const) {
-      await http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(t, r)).send({ decision: 'approved' }).expect(200);
+    for (const auth of [t.reviewer.auth, as(t, 'ADMIN'), as(t, 'OWNER')]) {
+      await http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(auth).send({ decision: 'approved' }).expect(200);
     }
-    await http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(t, 'APPROVER')).expect(200);
+    await http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(t, 'ADMIN')).expect(200);
   }
 
   /** Creates and publishes an SOP with `steps` (default two steps). */

@@ -32,7 +32,7 @@ test('owner navigation: every module page renders without errors', async ({ brow
 test('operator sees a reduced menu and is refused admin pages', async ({ browser }) => {
   const owner = await newUserContext(browser);
   await signup(owner.page, 'Role Co', 'Rob Owner', email('role-owner'));
-  const path = await invite(owner.page, email('role-op'), 'Operator / Viewer');
+  const path = await invite(owner.page, email('role-op'), 'Viewer');
   const op = await newUserContext(browser);
   await acceptInvite(op.page, path, 'Opal Operator');
 

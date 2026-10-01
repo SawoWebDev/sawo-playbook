@@ -245,8 +245,10 @@ describe('Kanban ordering constraint (§6.7)', () => {
     createdById: tenant.users.EDITOR.user.id,
   });
 
-  it('rejects ordering_type=url without ordering_url', async () => {
-    await expect(ctx.prisma.kanban.create({ data: { ...base(), orderingType: 'url' } })).rejects.toThrow();
+  it('accepts ordering_type=url without ordering_url (the URL is optional); sop/email still need their target', async () => {
+    await expect(ctx.prisma.kanban.create({ data: { ...base(), orderingType: 'url' } })).resolves.toBeTruthy();
+    await expect(ctx.prisma.kanban.create({ data: { ...base(), orderingType: 'sop' } })).rejects.toThrow();
+    await expect(ctx.prisma.kanban.create({ data: { ...base(), orderingType: 'email' } })).rejects.toThrow();
   });
 
   it('rejects two ordering targets at once', async () => {

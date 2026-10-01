@@ -57,6 +57,8 @@ export interface TenantUser {
 export interface Tenant {
   organizationId: string;
   users: Record<OrgRole, TenantUser>;
+  /** A second Editor — Editors approve each other's versions (quorum needs distinct non-submitting approvers). */
+  reviewer: TenantUser;
   /** Convenience: create another user in this tenant. */
   addUser: (role: OrgRole, label?: string) => Promise<TenantUser>;
 }
@@ -88,7 +90,8 @@ export async function createTenant(ctx: TestContext, label = 'org'): Promise<Ten
 
   const users = {} as Record<OrgRole, TenantUser>;
   for (const role of Object.values(OrgRole)) users[role] = await addUser(role);
-  return { organizationId: org.id, users, addUser };
+  const reviewer = await addUser('EDITOR', 'reviewer');
+  return { organizationId: org.id, users, reviewer, addUser };
 }
 
 /** Re-sign a token after the user row changed (e.g. tokenVersion bump in tests). */

@@ -26,9 +26,9 @@ test('owner signs up and invites the team (emails delivered via Mailpit)', async
 
   const team: [keyof typeof actors, string, string][] = [
     ['admin', 'Adam Admin', 'Admin'],
-    ['approver1', 'April Approver', 'Approver'],
-    ['approver2', 'Aaron Approver', 'Approver'],
-    ['operator', 'Oscar Operator', 'Operator / Viewer'],
+    ['approver1', 'April Approver', 'Editor'], // Editors approve each other's versions
+    ['approver2', 'Aaron Approver', 'Editor'],
+    ['operator', 'Oscar Operator', 'Viewer'],
   ];
   for (const [key, name, role] of team) {
     const mail = email(key);

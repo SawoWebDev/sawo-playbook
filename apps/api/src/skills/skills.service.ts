@@ -34,7 +34,8 @@ export class SkillsService {
 
   /** Associate ids whose rows the actor may see, or `null` for "all in org". */
   private async visibleAssociates(actor: AuthUser): Promise<string[] | null> {
-    if (actor.role === 'OWNER' || actor.role === 'ADMIN') return null;
+    // Admins and Editors record training for everyone; (retired) Trainers see their trainees; Viewers their own row.
+    if (actor.role === 'OWNER' || actor.role === 'ADMIN' || actor.role === 'EDITOR') return null;
     if (actor.role === 'TRAINER') {
       const rows = await this.prisma.trainerAssignment.findMany({
         where: { organizationId: actor.organizationId, trainerId: actor.id },
@@ -113,7 +114,7 @@ export class SkillsService {
         role: a.orgRole,
         editable:
           a.id !== actor.id &&
-          (actor.role === 'OWNER' || actor.role === 'ADMIN' || (actor.role === 'TRAINER' && myTrainees.has(a.id))),
+          (actor.role === 'OWNER' || actor.role === 'ADMIN' || actor.role === 'EDITOR' || (actor.role === 'TRAINER' && myTrainees.has(a.id))),
       })),
       cells: records.map((r) => ({
         associateId: r.associateId,

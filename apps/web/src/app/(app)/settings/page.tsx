@@ -59,7 +59,7 @@ export default function SettingsPage() {
             Require approval before publishing
           </label>
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-            Off: “Finish &amp; Save” in the editor publishes the SOP immediately. On: new versions go through review by approvers first.
+            Off: “Finish &amp; Save” in the editor publishes the SOP immediately. On: new versions must first be approved by Admins / Editors (other than the person who submitted it).
           </p>
         </div>
         {org.settings.approvalRequired && (

@@ -50,9 +50,11 @@ describe('permission matrix (§7.2)', () => {
   const cases: Array<[Permission, OrgRole[]]> = [
     [Permission.UsersManage, ['OWNER', 'ADMIN']],
     [Permission.SopEdit, ['OWNER', 'ADMIN', 'EDITOR']],
-    [Permission.SopApprove, ['OWNER', 'ADMIN', 'APPROVER']],
-    [Permission.SopPublish, ['OWNER', 'ADMIN', 'APPROVER']],
-    [Permission.SkillsUpdate, ['OWNER', 'ADMIN', 'TRAINER']],
+    [Permission.SopApprove, ['OWNER', 'ADMIN', 'EDITOR']],
+    [Permission.SopPublish, ['OWNER', 'ADMIN', 'EDITOR']],
+    [Permission.SkillsUpdate, ['OWNER', 'ADMIN', 'EDITOR']],
+    [Permission.KanbanEdit, ['OWNER', 'ADMIN', 'EDITOR']],
+    [Permission.OrgSettingsManage, ['OWNER', 'ADMIN']],
     [Permission.AnalyticsView, ['OWNER', 'ADMIN', 'EDITOR']],
     [Permission.OrgDelete, ['OWNER']],
     [Permission.SopView, ['OWNER', 'ADMIN', 'EDITOR', 'APPROVER', 'TRAINER', 'OPERATOR']],
@@ -64,9 +66,13 @@ describe('permission matrix (§7.2)', () => {
     }
   });
 
-  it('Editor can never publish or approve', () => {
-    expect(roleHasPermission('EDITOR', Permission.SopPublish)).toBe(false);
-    expect(roleHasPermission('EDITOR', Permission.SopApprove)).toBe(false);
+  it('Viewer (OPERATOR) and the retired Approver/Trainer roles are read-only', () => {
+    const writes = Object.values(Permission).filter(
+      (p) => ![Permission.Authenticated, Permission.SopView, Permission.ChecklistComplete, Permission.ShareExport, Permission.SkillsView].includes(p),
+    );
+    for (const role of ['OPERATOR', 'APPROVER', 'TRAINER'] as const) {
+      for (const p of writes) expect({ role, p, granted: roleHasPermission(role, p) }).toEqual({ role, p, granted: false });
+    }
   });
 
   it('every permission has at least one role', () => {

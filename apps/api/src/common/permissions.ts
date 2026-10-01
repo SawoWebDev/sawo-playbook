@@ -29,30 +29,43 @@ export enum Permission {
   AuditLogView = 'audit.view',
 }
 
-const { OWNER, ADMIN, EDITOR, APPROVER, TRAINER, OPERATOR } = OrgRole;
-const ALL: OrgRole[] = [OWNER, ADMIN, EDITOR, APPROVER, TRAINER, OPERATOR];
+/**
+ * Three working roles (plus the account Owner):
+ *   ADMIN    — everything: users, settings, audit, content, approve & publish
+ *   EDITOR   — create, edit, approve & publish SOPs; kanbans, folders, training records
+ *   OPERATOR — shown as "Viewer": read-only access to published SOPs and drafts
+ * APPROVER and TRAINER are retired (migrated to EDITOR, no longer assignable); any account still holding one
+ * only gets the read-only rights every role has.
+ */
+const { OWNER, ADMIN, EDITOR, OPERATOR } = OrgRole;
+const ALL: OrgRole[] = Object.values(OrgRole);
+const MANAGERS: OrgRole[] = [OWNER, ADMIN];
+const AUTHORS: OrgRole[] = [OWNER, ADMIN, EDITOR];
+
+/** Roles that can be given to a user (invite / role change). OWNER is the account holder and never assigned. */
+export const ASSIGNABLE_ROLES: OrgRole[] = [ADMIN, EDITOR, OPERATOR];
 
 export const PERMISSION_MATRIX: Record<Permission, readonly OrgRole[]> = {
   [Permission.Authenticated]: ALL,
-  [Permission.UsersManage]: [OWNER, ADMIN],
-  [Permission.UsersChangeRole]: [OWNER, ADMIN], // Admin may not grant/alter Owner/Admin — service-level check
-  [Permission.OrgSettingsManage]: [OWNER, ADMIN],
-  [Permission.FoldersEdit]: [OWNER, ADMIN, EDITOR],
-  [Permission.SopEdit]: [OWNER, ADMIN, EDITOR],
-  [Permission.SopSubmit]: [OWNER, ADMIN, EDITOR],
-  [Permission.SopApprove]: [OWNER, ADMIN, APPROVER],
-  [Permission.SopPublish]: [OWNER, ADMIN, APPROVER],
+  [Permission.UsersManage]: MANAGERS,
+  [Permission.UsersChangeRole]: MANAGERS, // Admin may not grant/alter Owner/Admin — service-level check
+  [Permission.OrgSettingsManage]: MANAGERS,
+  [Permission.FoldersEdit]: AUTHORS,
+  [Permission.SopEdit]: AUTHORS,
+  [Permission.SopSubmit]: AUTHORS,
+  [Permission.SopApprove]: AUTHORS,
+  [Permission.SopPublish]: AUTHORS,
   [Permission.SopView]: ALL,
   [Permission.ChecklistComplete]: ALL,
-  [Permission.KanbanEdit]: [OWNER, ADMIN, EDITOR],
-  [Permission.KanbanBulk]: [OWNER, ADMIN, EDITOR],
-  [Permission.SkillsView]: [OWNER, ADMIN, TRAINER, OPERATOR], // Operator: own row only — service-level
-  [Permission.SkillsUpdate]: [OWNER, ADMIN, TRAINER], // Trainer: their trainees only — service-level
-  [Permission.TrainerAssign]: [OWNER, ADMIN],
-  [Permission.AnalyticsView]: [OWNER, ADMIN, EDITOR], // Editor: own activity only — service-level
+  [Permission.KanbanEdit]: AUTHORS,
+  [Permission.KanbanBulk]: AUTHORS,
+  [Permission.SkillsView]: [OWNER, ADMIN, EDITOR, OPERATOR], // Viewer: own row only — service-level
+  [Permission.SkillsUpdate]: AUTHORS,
+  [Permission.TrainerAssign]: MANAGERS,
+  [Permission.AnalyticsView]: AUTHORS, // Editor: own activity only — service-level
   [Permission.ShareExport]: ALL,
   [Permission.OrgDelete]: [OWNER],
-  [Permission.AuditLogView]: [OWNER, ADMIN],
+  [Permission.AuditLogView]: MANAGERS,
 };
 
 export function roleHasPermission(role: OrgRole, permission: Permission): boolean {

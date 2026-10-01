@@ -55,10 +55,10 @@ async function saveSteps(t: Tenant, sopId: string, versionId: string, steps: obj
 /** Drives a version through submit → quorum approvals → publish. Quorum is 3 by default. */
 async function publishFlow(t: Tenant, sopId: string, versionId: string) {
   await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(t, 'EDITOR')).send({}).expect(200);
-  for (const r of ['APPROVER', 'ADMIN', 'OWNER'] as const) {
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(t, r)).send({ decision: 'approved' }).expect(200);
+  for (const auth of [t.reviewer.auth, as(t, 'ADMIN'), as(t, 'OWNER')]) {
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(auth).send({ decision: 'approved' }).expect(200);
   }
-  await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(t, 'APPROVER')).expect(200);
+  await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(t, 'ADMIN')).expect(200);
 }
 
 async function publishedSop(t: Tenant, name = 'Published SOP') {
@@ -143,16 +143,21 @@ describe('SOP creation (§17 worked example)', () => {
     expect(r.status).toBe(403);
   });
 
-  it('list shows drafts to editors only; operators see only published SOPs', async () => {
-    const { sopId: draftId } = await createSop(a, 'Draft only');
+  it('Viewers (OPERATOR) see published SOPs and drafts, read-only', async () => {
+    const { sopId: draftId, versionId } = await createSop(a, 'Draft only');
     const { sopId: pubId } = await publishedSop(a, 'Visible to all');
     const ed = await ctx.http().get('/api/sops?limit=200').set(as(a, 'EDITOR')).expect(200);
     const op = await ctx.http().get('/api/sops?limit=200').set(as(a, 'OPERATOR')).expect(200);
     const ids = (r: { body: { items: { id: string }[] } }) => r.body.items.map((i) => i.id);
     expect(ids(ed)).toEqual(expect.arrayContaining([draftId, pubId]));
-    expect(ids(op)).toContain(pubId);
-    expect(ids(op)).not.toContain(draftId);
-    await ctx.http().get(`/api/sops/${draftId}`).set(as(a, 'OPERATOR')).expect(404);
+    expect(ids(op)).toEqual(expect.arrayContaining([draftId, pubId]));
+    await ctx.http().get(`/api/sops/${draftId}`).set(as(a, 'OPERATOR')).expect(200);
+    await ctx.http().get(`/api/sops/${draftId}/versions/${versionId}`).set(as(a, 'OPERATOR')).expect(200);
+    // ...but cannot change anything
+    expect((await saveSteps(a, draftId, versionId, [{ description: 'x' }], 'OPERATOR')).status).toBe(403);
+    await ctx.http().patch(`/api/sops/${draftId}`).set(as(a, 'OPERATOR')).send({ name: 'renamed' }).expect(403);
+    await ctx.http().post(`/api/sops/${draftId}/versions/${versionId}/finish`).set(as(a, 'OPERATOR')).send({}).expect(403);
+    await ctx.http().delete(`/api/sops/${draftId}`).set(as(a, 'OPERATOR')).expect(403);
   });
 
   it('search filters by name / reference', async () => {
@@ -201,7 +206,7 @@ describe('approval state machine (§6.3)', () => {
     // steps are frozen while under review
     expect((await saveSteps(a, sopId, versionId, [{ description: 'sneaky' }])).status).toBe(409);
 
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'APPROVER')).send({ decision: 'approved' }).expect(200);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'ADMIN')).send({ decision: 'approved' }).expect(200);
     let v = await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: versionId } });
     expect(v.lifecycleState).toBe('PENDING_APPROVAL');
@@ -210,9 +215,10 @@ describe('approval state machine (§6.3)', () => {
     expect(v.lifecycleState).toBe('APPROVED');
     expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).status).toBe('approved');
 
-    // Editor can never publish; Approver can
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'EDITOR')).expect(403);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'APPROVER')).expect(200);
+    // Viewers (and the retired Approver role) cannot publish; Editors can
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'OPERATOR')).expect(403);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'APPROVER')).expect(403);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'EDITOR')).expect(200);
     const sop = await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } });
     expect(sop.status).toBe('published');
     expect(sop.currentPublishedVersionId).toBe(versionId);
@@ -221,11 +227,14 @@ describe('approval state machine (§6.3)', () => {
     expect(actions).toEqual(expect.arrayContaining(['sop.version.submitted', 'sop.version.approved', 'sop.version.published']));
   });
 
-  it('Editor cannot approve; publish of a non-APPROVED version is 409', async () => {
+  it('Viewers and retired roles cannot approve; the submitter cannot self-approve; publishing a non-APPROVED version is 409', async () => {
     const { sopId, versionId } = await createSop(a);
     await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(a, 'EDITOR')).send({}).expect(200);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'EDITOR')).send({ decision: 'approved' }).expect(403);
+    for (const role of ['OPERATOR', 'APPROVER', 'TRAINER'] as const) {
+      await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, role)).send({ decision: 'approved' }).expect(403);
+    }
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'EDITOR')).send({ decision: 'approved' }).expect(403); // own submission
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'ADMIN')).expect(409);
   });
 
@@ -247,8 +256,8 @@ describe('approval state machine (§6.3)', () => {
     const { sopId, versionId } = await createSop(a);
     await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(a, 'EDITOR')).send({}).expect(200);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'APPROVER')).send({ decision: 'approved' }).expect(200);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'APPROVER')).send({ decision: 'approved' }).expect(409);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(409);
   });
 
   it('MANDATORY approval-round isolation: reject → resubmit → prior approvals do not count', async () => {
@@ -256,7 +265,7 @@ describe('approval state machine (§6.3)', () => {
     await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
     const url = `/api/sops/${sopId}/versions/${versionId}`;
     await ctx.http().post(`${url}/submit`).set(as(a, 'EDITOR')).send({}).expect(200);
-    await ctx.http().post(`${url}/decisions`).set(as(a, 'APPROVER')).send({ decision: 'approved' }).expect(200);
+    await ctx.http().post(`${url}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`${url}/decisions`).set(as(a, 'ADMIN')).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`${url}/decisions`).set(as(a, 'OWNER')).send({ decision: 'rejected' }).expect(400); // comment required
     const rej = await ctx.http().post(`${url}/decisions`).set(as(a, 'OWNER')).send({ decision: 'rejected', comment: 'Missing PPE step' }).expect(200);
@@ -269,7 +278,7 @@ describe('approval state machine (§6.3)', () => {
     expect(resub.body.currentApprovalRound).toBe(2);
 
     // one new approval in round 2 must not reach quorum even though round 1 had two approvals
-    await ctx.http().post(`${url}/decisions`).set(as(a, 'APPROVER')).send({ decision: 'approved' }).expect(200);
+    await ctx.http().post(`${url}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
     const hist = await ctx.http().get(`${url}/approvals`).set(as(a, 'EDITOR')).expect(200);
     expect(hist.body.approvedInCurrentRound).toBe(1);
     expect(hist.body.decisions.filter((d: { round: number }) => d.round === 1)).toHaveLength(3);
@@ -282,16 +291,16 @@ describe('approval state machine (§6.3)', () => {
 
   it('Invariant #20: a valid decision still counts after the approver is demoted; demoted user cannot vote', async () => {
     const t = await createTenant(ctx, 'inv20');
-    const extra = await t.addUser('APPROVER', 'approver2');
+    const extra = await t.addUser('EDITOR', 'editor3');
     const { sopId, versionId } = await createSop(t);
     await saveSteps(t, sopId, versionId, [{ description: 'x' }]);
     const url = `/api/sops/${sopId}/versions/${versionId}`;
     await ctx.http().post(`${url}/submit`).set(as(t, 'EDITOR')).send({}).expect(200);
-    await ctx.http().post(`${url}/decisions`).set(as(t, 'APPROVER')).send({ decision: 'approved' }).expect(200);
+    await ctx.http().post(`${url}/decisions`).set(t.reviewer.auth).send({ decision: 'approved' }).expect(200);
 
-    // demote the first approver
-    await ctx.http().patch(`/api/users/${t.users.APPROVER.user.id}/role`).set(as(t, 'OWNER')).send({ role: 'OPERATOR' }).expect(200);
-    const demoted = await refreshAuth(ctx, t.users.APPROVER);
+    // demote the first approver to Viewer
+    await ctx.http().patch(`/api/users/${t.reviewer.user.id}/role`).set(as(t, 'OWNER')).send({ role: 'OPERATOR' }).expect(200);
+    const demoted = await refreshAuth(ctx, t.reviewer);
     // the second approver (still eligible) and admin complete the quorum — the demoted user's earlier vote counts
     await ctx.http().post(`${url}/decisions`).set(extra.auth).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`${url}/decisions`).set(as(t, 'ADMIN')).send({ decision: 'approved' }).expect(200);
@@ -392,10 +401,10 @@ describe('copy-on-write versions + Invariant #19 via the API', () => {
     expect(sop.status).toBe('draft');
     expect(sop.currentPublishedVersionId).toBe(versionId);
 
-    // Operators still see v1 as current
+    // Viewers still get v1 as the current (published) version; they can open the draft read-only
     const cur = await ctx.http().get(`/api/sops/${sopId}/current`).set(as(a, 'OPERATOR')).expect(200);
     expect(cur.body.id).toBe(versionId);
-    await ctx.http().get(`/api/sops/${sopId}/versions/${r.body.id}`).set(as(a, 'OPERATOR')).expect(404);
+    await ctx.http().get(`/api/sops/${sopId}/versions/${r.body.id}`).set(as(a, 'OPERATOR')).expect(200);
   });
 
   it('MANDATORY concurrency: two simultaneous create-draft requests → exactly one 201, one 409', async () => {

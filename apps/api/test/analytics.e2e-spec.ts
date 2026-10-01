@@ -112,12 +112,12 @@ describe('full-text search (§14)', () => {
     expect((await search('OPERATOR', ref)).body.sops[0].id).toBe(publishedId);
   });
 
-  it('draft content is searchable only by users who can see drafts', async () => {
-    expect((await search('OPERATOR', 'impeller')).body.sops).toEqual([]);
-    expect((await search('OPERATOR', 'zeppelin')).body.sops).toEqual([]);
-    const ed = await search('EDITOR', 'impeller');
-    expect(ed.body.sops[0]).toMatchObject({ id: publishedId, matchedIn: ['draft content'] });
-    expect((await search('EDITOR', 'zeppelin')).body.sops.map((s: { id: string }) => s.id)).toEqual([draftOnlyId]);
+  it('draft content is searchable by every role — Viewers see drafts too (read-only)', async () => {
+    for (const role of ['EDITOR', 'OPERATOR'] as const) {
+      const r = await search(role, 'impeller');
+      expect(r.body.sops[0]).toMatchObject({ id: publishedId, matchedIn: ['draft content'] });
+      expect((await search(role, 'zeppelin')).body.sops.map((s: { id: string }) => s.id)).toEqual([draftOnlyId]);
+    }
   });
 
   it('folder rename is reflected synchronously', async () => {
