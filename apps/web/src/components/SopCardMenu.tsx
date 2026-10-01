@@ -87,10 +87,11 @@ export function SopCardMenu({
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     });
 
-  // Only never-published SOPs (e.g. an unwanted duplicate) can be deleted; published ones are archived instead.
-  const canDelete = canEdit && !sop.currentPublishedVersion;
+  // Delete removes the whole SOP (e.g. an unwanted duplicate). It is offered only while the SOP is in draft /
+  // not yet finished; a fully published SOP is archived instead.
+  const canDelete = canEdit && sop.status !== 'archived' && (!!sop.activeVersion || !sop.currentPublishedVersion);
   const remove = () => {
-    if (!confirm(`Delete "${sop.name}"? This draft SOP will be removed.`)) return setOpen(false);
+    if (!confirm(`Delete "${sop.name}" (${sop.referenceNo})? The SOP will be removed from the list.`)) return setOpen(false);
     void run(async () => {
       await api(`/sops/${sop.id}`, { method: 'DELETE' });
       onChanged(`Deleted ${sop.referenceNo}.`);

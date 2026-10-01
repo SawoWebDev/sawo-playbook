@@ -454,10 +454,19 @@ describe('duplicate SOP', () => {
     expect(v.lifecycleState).toBe('ABANDONED');
   });
 
-  it('a published SOP cannot be deleted (409)', async () => {
+  it('a published SOP with nothing in progress cannot be deleted (409)', async () => {
     const { sopId } = await publishedSop(a, 'Published, not deletable');
     await ctx.http().delete(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).expect(409);
     await ctx.http().get(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).expect(200);
+  });
+
+  it('an SOP with a draft in progress is deleted entirely, even if an earlier version was published', async () => {
+    const { sopId, versionId } = await publishedSop(a, 'Draft again');
+    const d = await ctx.http().post(`/api/sops/${sopId}/versions`).set(as(a, 'EDITOR')).expect(201);
+    await ctx.http().delete(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).expect(204);
+    await ctx.http().get(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).expect(404);
+    expect((await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: d.body.id } })).lifecycleState).toBe('ABANDONED');
+    expect((await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: versionId } })).lifecycleState).toBe('PUBLISHED');
   });
 
   it('Operator cannot duplicate (403); cross-tenant is 404', async () => {

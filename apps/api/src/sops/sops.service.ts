@@ -535,8 +535,9 @@ export class SopsService {
   }
 
   /**
-   * Deletes an SOP that has never been published (e.g. a duplicate that is no longer wanted). Its unpublished
-   * versions are abandoned so their media can be released; published SOPs must be archived instead.
+   * Deletes an SOP that is still in draft / not yet finished (e.g. an unwanted duplicate): it must have an
+   * unpublished version in progress, or never have been published. Open versions are abandoned so their media can
+   * be released. A fully published SOP with nothing in progress must be archived instead.
    */
   async deleteSop(actor: AuthUser, sopId: string) {
     await this.findSop(actor, sopId);
@@ -544,8 +545,8 @@ export class SopsService {
       // lock the SOP row so a concurrent publish cannot slip in between the check and the delete
       await tx.$queryRaw`SELECT id FROM sop WHERE id = ${sopId}::uuid FOR UPDATE`;
       const published = await tx.sopVersion.count({ where: { sopId, lifecycleState: 'PUBLISHED' } });
-      if (published) throw new ConflictException('A published SOP cannot be deleted; archive it instead');
       const open = await tx.sopVersion.findMany({ where: { sopId, lifecycleState: { in: ACTIVE_UNPUBLISHED } }, select: { id: true } });
+      if (published && !open.length) throw new ConflictException('A published SOP cannot be deleted; archive it instead');
       for (const v of open) await this.repo.lock(tx, actor.organizationId, sopId, v.id);
       await tx.sopVersion.updateMany({ where: { id: { in: open.map((v) => v.id) } }, data: { lifecycleState: 'ABANDONED' } });
       const media = await tx.sopStepMedia.findMany({ where: { sopStep: { sopVersionId: { in: open.map((v) => v.id) } } }, select: { mediaAssetId: true } });
