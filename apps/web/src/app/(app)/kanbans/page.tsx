@@ -10,6 +10,7 @@ import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate } from '@/lib/format';
+import { kanbanTitle } from '@/lib/kanban';
 import { allowed } from '@/lib/permissions';
 
 interface ListResponse {
@@ -180,7 +181,7 @@ function Kanbans() {
 
       <div className={`sop-grid kanban-grid${selected.size ? ' selecting' : ''}`}>
         {data?.items.map((k) => {
-          const title = k.partDescription ? `[${k.partCode}] ${k.partDescription}` : k.partCode;
+          const title = kanbanTitle(k);
           return (
             <div
               key={k.id}

@@ -29,4 +29,8 @@ export const env = {
   get publicAppUrl() {
     return process.env.PUBLIC_APP_URL ?? 'http://localhost:3000';
   },
+  /** Optional link to a kanban explainer video; printed as a "VIDEO EXPLAINER" QR code on kanban cards. */
+  get kanbanVideoUrl() {
+    return process.env.KANBAN_VIDEO_URL || null;
+  },
 };

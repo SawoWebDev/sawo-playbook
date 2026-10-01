@@ -12,6 +12,7 @@ x-api-env: &api-env
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
   PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+  KANBAN_VIDEO_URL: ${KANBAN_VIDEO_URL:-}
   STORAGE_DIR: /data/uploads
   PRISMA_HIDE_UPDATE_MESSAGE: "1"
   SMTP_URL: ${SMTP_URL:-}

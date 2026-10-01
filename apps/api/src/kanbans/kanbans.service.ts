@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { BRAND, BRAND_FONT_STACK, brandFontCss } from '../pdf/brand';
+import QRCode from 'qrcode';
+import { env } from '../config/env';
+import { BRAND } from '../pdf/brand';
 import { Kanban, KanbanOrderingType, Prisma } from '@prisma/client';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
@@ -10,7 +12,7 @@ import { markAttached, reevaluateMedia } from '../media/media-lifecycle';
 import { PdfRendererService } from '../pdf/pdf-renderer.service';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { escapeHtml } from '../sops/sanitize';
+import { kanbanPrintHtml, PrintableKanban } from './kanban-print';
 import { BulkEditDto, CreateKanbanDto, ListKanbansQuery, UpdateKanbanDto } from './kanban.dto';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -371,51 +373,53 @@ export class KanbansService {
     return [KANBAN_CSV_COLUMNS.join(','), ...rows.map(line)].join('\r\n') + '\r\n';
   }
 
-  /** Printable kanban cards (template 01 = standard, 02 = with price & carriage). */
+  /** Printable kanban cards: two A4 pages per card (option 1 small strip + bin label, option 2 large) — see kanban-print.ts. */
   async printPdf(actor: AuthUser, ids: string[]): Promise<Buffer> {
     const unique = [...new Set(ids)];
     const rows = await this.prisma.kanban.findMany({
       where: { id: { in: unique }, organizationId: actor.organizationId, deletedAt: null },
-      include: { picture: true, orderingSop: { select: { referenceNo: true, name: true } } },
+      include: { picture: true, orderingSop: { select: { referenceNo: true, name: true, qrPublicToken: true } } },
       orderBy: { partCode: 'asc' },
     });
     if (rows.length !== unique.length) throw new NotFoundException('One or more kanbans not found');
-    const cards: string[] = [];
-    for (const k of rows) cards.push(await this.cardHtml(k));
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-      ${brandFontCss()}
-      @page { size: A4; margin: 10mm; }
-      body { font-family: ${BRAND_FONT_STACK}; font-size: 10pt; margin: 0; color: ${BRAND.text}; }
-      .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
-      .card { border: 2px solid ${BRAND.header}; border-radius: 4px; padding: 4mm; page-break-inside: avoid; height: 84mm; box-sizing: border-box; display: flex; flex-direction: column; }
-      .band { height: 6mm; margin: -4mm -4mm 3mm; border-radius: 2px 2px 0 0; }
-      .top { display: flex; gap: 4mm; }
-      .top img { width: 32mm; height: 32mm; object-fit: contain; border: 1px solid #ccc; }
-      .code { font-size: 16pt; font-weight: bold; }
-      .desc { margin-top: 1mm; }
-      table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 9pt; }
-      td { border: 1px solid #bbb; padding: 1mm 2mm; } td:first-child { font-weight: bold; width: 35%; background: #f3f4f6; }
-      .barcode { margin-top: auto; font-family: monospace; text-align: center; font-size: 11pt; letter-spacing: 2px; }
-    </style></head><body><div class="sheet">${cards.join('')}</div><script>window.onload = () => window.print();</script></body></html>`;
-    return this.renderer.htmlToPdf(html);
+    const cards: PrintableKanban[] = [];
+    for (const k of rows) cards.push(await this.printable(k));
+    const video = env.kanbanVideoUrl;
+    const videoQr = video ? await QRCode.toDataURL(video, { margin: 0, width: 300 }) : null;
+    return this.renderer.htmlToPdf(kanbanPrintHtml(cards, videoQr));
   }
 
-  private async cardHtml(k: Kanban & { picture: { storageKey: string; mimeType: string; type: string } | null; orderingSop: { referenceNo: string; name: string } | null }) {
-    const e = (v: unknown) => escapeHtml(v === null || v === undefined ? '' : String(v));
-    const img = k.picture && k.picture.type === 'image'
-      ? `<img src="data:${k.picture.mimeType};base64,${(await this.storage.get(k.picture.storageKey)).toString('base64')}">`
-      : '';
-    const order = k.orderingType === 'url' ? e(k.orderingUrl) : k.orderingType === 'email' ? e(k.orderingEmail) : `SOP ${e(k.orderingSop?.referenceNo)} — ${e(k.orderingSop?.name)}`;
-    const color = /^#?[0-9a-f]{3,8}$|^[a-z]{3,20}$/i.test(k.color ?? '') ? (k.color!.match(/^[0-9a-f]+$/i) ? `#${k.color}` : k.color) : BRAND.button;
-    const rows: [string, unknown][] = [
-      ['Supplier', k.supplier], ['Supplier part no.', k.supplierPartNo], ['Location', k.location], ['Order when', k.orderWhen],
-      ['Order qty', k.orderQty], ['Delivery time', k.deliveryTime], ['Order via', null],
-    ];
-    if (k.template === '02') rows.splice(6, 0, ['Price', k.price?.toString()], ['Carriage', k.carriage?.toString()]);
-    return `<div class="card"><div class="band" style="background:${e(color)}"></div>
-      <div class="top">${img}<div><div class="code">${e(k.partCode)}</div><div class="desc">${e(k.partDescription)}</div>
-      ${k.usedFor ? `<div class="desc"><em>Used for:</em> ${e(k.usedFor)}</div>` : ''}${k.tag ? `<div class="desc"><em>Tag:</em> ${e(k.tag)}</div>` : ''}</div></div>
-      <table>${rows.map(([label, val]) => `<tr><td>${label}</td><td>${label === 'Order via' ? order : e(val)}</td></tr>`).join('')}</table>
-      ${k.barcode ? `<div class="barcode">*${e(k.barcode)}*</div>` : ''}</div>`;
+  private async printable(
+    k: Kanban & { picture: { storageKey: string; mimeType: string; type: string } | null; orderingSop: { referenceNo: string; name: string; qrPublicToken: string } | null },
+  ): Promise<PrintableKanban> {
+    const pictureUri =
+      k.picture && k.picture.type === 'image' ? `data:${k.picture.mimeType};base64,${(await this.storage.get(k.picture.storageKey)).toString('base64')}` : null;
+    const qrTarget =
+      k.orderingType === 'url' && k.orderingUrl
+        ? k.orderingUrl
+        : k.orderingType === 'email' && k.orderingEmail
+          ? `mailto:${k.orderingEmail}?subject=${encodeURIComponent(`Order ${k.partCode}`)}`
+          : k.orderingType === 'sop' && k.orderingSop
+            ? `${env.publicAppUrl}/s/${k.orderingSop.qrPublicToken}`
+            : null;
+    const color = /^#?[0-9a-f]{3,8}$|^[a-z]{3,20}$/i.test(k.color ?? '') ? (k.color!.match(/^[0-9a-f]+$/i) ? `#${k.color}` : k.color!) : BRAND.button;
+    return {
+      partCode: k.partCode,
+      partDescription: k.partDescription,
+      supplier: k.supplier,
+      supplierPartNo: k.supplierPartNo,
+      usedFor: k.usedFor,
+      orderWhen: k.orderWhen,
+      orderQty: k.orderQty,
+      deliveryTime: k.deliveryTime,
+      location: k.location,
+      price: k.price?.toString() ?? null,
+      carriage: k.carriage?.toString() ?? null,
+      template: k.template,
+      color,
+      barcode: k.barcode || k.partCode,
+      pictureUri,
+      qrUri: qrTarget ? await QRCode.toDataURL(qrTarget, { margin: 0, width: 300 }) : null,
+    };
   }
 }

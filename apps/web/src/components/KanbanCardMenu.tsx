@@ -6,6 +6,7 @@ import type { Kanban } from '@/components/KanbanForm';
 import { Icons } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { errorMessage, fmtDateTime } from '@/lib/format';
+import { kanbanTitle } from '@/lib/kanban';
 
 interface HistoryRow {
   id: string;
@@ -119,8 +120,7 @@ function ChangeHistory({ kanban: k, onClose }: { kanban: Kanban; onClose: () => 
       <div className="card dialog" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 2px' }}>Change History</h3>
         <p className="muted" style={{ margin: '0 0 12px', fontSize: 13 }}>
-          {k.partCode}
-          {k.partDescription ? ` — ${k.partDescription}` : ''}
+          {kanbanTitle(k)}
         </p>
         {error && <div className="error">{error}</div>}
         {!rows && !error && <p className="muted">Loading…</p>}
