@@ -8,19 +8,21 @@ test('owner navigation: every module page renders without errors', async ({ brow
   page.on('pageerror', (e) => errors.push(e.message));
   await signup(page, 'Nav Co', 'Nora Nav', email('nav-owner'));
   const pages: [string, string][] = [
-    ['STD OPS', 'STD OPS'],
     ['Checklists', 'Checklists'],
-    ['KANBANS', 'KANBANS'],
-    ['SKILLS', 'SKILLS'],
-    ['FOLDERS', 'FOLDERS'],
+    ['Folders', 'FOLDERS'],
     ['Analytics', 'Analytics'],
     ['Manage Users', 'Manage Users'],
     ['Organization', 'Organization settings'],
     ['Audit Log', 'Audit log'],
   ];
   for (const [link, heading] of pages) {
-    await page.locator('.sidebar').getByRole('link', { name: link, exact: true }).click();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.locator('.topbar .menu-list').getByRole('link', { name: link, exact: true }).click();
     await expect(page.getByRole('heading', { name: new RegExp(heading), level: 1 })).toBeVisible();
+  }
+  for (const tab of ['KANBANS', 'SKILLS', 'STD OPS']) {
+    await page.locator('.tabs').getByRole('link', { name: new RegExp(`^${tab}`) }).click();
+    await expect(page.locator('.tabs a.active')).toHaveText(new RegExp(`^${tab}`));
   }
   await expect(page.locator('.error')).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -34,8 +36,9 @@ test('operator sees a reduced menu and is refused admin pages', async ({ browser
   const op = await newUserContext(browser);
   await acceptInvite(op.page, path, 'Opal Operator');
 
-  const sidebar = op.page.locator('.sidebar');
-  await expect(sidebar.getByRole('link', { name: 'STD OPS' })).toBeVisible();
+  await expect(op.page.locator('.tabs').getByRole('link', { name: /^STD OPS/ })).toBeVisible();
+  await op.page.getByRole('button', { name: 'Account menu' }).click();
+  const sidebar = op.page.locator('.topbar .menu-list');
   for (const hidden of ['Manage Users', 'Organization', 'Audit Log', 'Analytics']) {
     await expect(sidebar.getByRole('link', { name: hidden })).toHaveCount(0);
   }
@@ -74,11 +77,12 @@ test('folders: create tree, file an SOP, filter, global search, settings and ana
   await page.locator('#f').selectOption(line1!);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page).toHaveURL(/\/edit\//);
-  await page.getByRole('button', { name: '+ Add step' }).click();
+  await page.getByRole('button', { name: '+ Add New Step' }).click();
   await page.locator('.rte').click();
   await page.keyboard.type('Torque M8 bolts to 25 Nm in a star pattern.');
-  await page.getByRole('button', { name: 'Save & close' }).click();
-  await expect(page).toHaveURL(/\/sops\/[0-9a-f-]+\?v=/);
+  await page.getByRole('button', { name: 'Save As Draft' }).click();
+  await expect(page.getByText('Draft saved.')).toBeVisible();
+  await page.goto(new URL(page.url()).pathname.replace(/\/edit\/.*$/, ''));
   await expect(page.getByRole('heading', { name: sopName })).toBeVisible();
   await expect(page.getByText('1 step', { exact: true })).toBeVisible();
 
@@ -94,12 +98,16 @@ test('folders: create tree, file an SOP, filter, global search, settings and ana
   await expect(page).toHaveURL(/\/search\?q=/);
   await expect(page.locator('.sop-card', { hasText: sopName })).toContainText('draft content');
 
-  // settings: quorum validation and save
+  // settings: approval is optional (off by default); quorum only appears when it is on
   await page.goto('/settings');
+  await expect(page.getByLabel('Require approval before publishing')).not.toBeChecked();
+  await expect(page.getByLabel(/Approval quorum/)).toHaveCount(0);
+  await page.getByLabel('Require approval before publishing').check();
   await page.getByLabel(/Approval quorum/).fill('2');
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Settings saved.')).toBeVisible();
   await page.reload();
+  await expect(page.getByLabel('Require approval before publishing')).toBeChecked();
   await expect(page.getByLabel(/Approval quorum/)).toHaveValue('2');
 
   // analytics reflects activity

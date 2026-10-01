@@ -10,8 +10,9 @@
 
 - **Last updated:** 2026-09-30 — Session 1
 - **Current phase:** Phase 10 — Full Regression & Hardening (Phase 3 blocked on video-stack decision; Phase 9 optional)
+- **2026-09-30 SIMPLIFIED to 3 containers (db, api, web):** removed redis/BullMQ/worker (maintenance runs on a timer in the API; mail sent inline via SMTP_URL or logged), MinIO (uploads on `uploads` volume, HMAC-signed `/api/files/...` URLs), Gotenberg (SOP `/versions/:vid/print` + kanban `bulk/print` return PDFs rendered by headless Chromium (puppeteer-core) inside the api container; no canonical PDF stored), ClamAV/Mailpit (Mailpit only in `e2e` profile). API suite 184/184 green. Older notes below that mention Redis/MinIO/Gotenberg/worker are historical. `scripts/backup.sh`/`restore.sh` still reference MinIO and need updating; Playwright e2e not re-run.
 - **Last completed step:** Phase 10 core done — BullMQ worker + retention/purge + media cleanup (4 tests), prod images + `docker-compose.prod.yml`, CSP, security checklist, README. **Full API suite 168/168 green**, `next build` clean.
-- **Next action (pick up here):** Browser UAT passed (Playwright 17/17 + visual pass). Remaining: production deployment verification (real secrets/TLS/domain via `docker-compose.prod.yml`), first GitHub CI run once a remote exists, hardening (nonce CSP, disk encryption, backup schedule). Business decisions pending: Phase 3 video stack / Chrome plugin, Green/Red QR, confirm quorum=3 & public QR viewing off.
+- **Next action (pick up here):** Finish verifying the editor redesign + optional approval (API suites + Playwright incl. new `e2e/tests/editor.spec.ts`), then commit. Docker VM has only ~2 GB RAM: stop dev `web`/`worker` (`docker compose stop web worker`) before running test suites, start again after. Remaining: production deployment verification, CI first run, hardening. Business decisions pending: Phase 3 video stack, Green/Red QR.
 - **Known issues / notes:** see "How to run" below. Initial commit `b095cff` on `main` (no remote configured). Full suite: 13 files / 179 API tests + 17 Playwright browser tests green.
 - **Gotcha:** when editing files with Python on this Windows host always use `open(p, encoding='utf-8')` — the default cp1252 codec corrupted non-ASCII chars once (fixed).
 
@@ -49,6 +50,8 @@ docker compose --profile test build api-test               # rebuild after packa
 | 2026-09-30 | Steps saved as whole ordered list (`PUT .../steps`), ids preserved when sent back | simple editor model |
 | 2026-09-30 | Kanban CSV import is all-or-nothing (+ dryRun) | predictable bulk ops |
 | 2026-09-30 | Nobody can assess their own skills; Trainers see self + trainees | conflict of interest; §7.2 "their trainees" |
+| 2026-09-30 | **Approval workflow optional, off by default** (`approval_required`) — user's process has no approval | user decision, overrides spec §6.3 default |
+| 2026-09-30 | Step description limit 400 characters (UI-enforced), hint above 120 | matches reference GembaDocs editor |
 
 ---
 
@@ -144,6 +147,14 @@ docker compose --profile test build api-test               # rebuild after packa
 - **UAT status: PASSED** (functional automation + visual pass). Production deployment still unverified.
 - Note: dev web server takes ~2 min per first page compile on this Windows bind mount → browser tests use the prod web build
 
+## Change request (2026-09-30): editor layout + no-approval process
+- [x] User decision: **their process has no approval step**. New org setting `approval_required` (migration `20260930050000_approval_optional`, default **false**). Off → "Finish & Save" publishes directly (`POST /api/sops/:id/versions/:vid/finish`, Editor+). On → existing submit/quorum/publish workflow (unchanged, still fully tested).
+- [x] Settings page: "Require approval before publishing" switch; quorum/self-approval only shown when on
+- [x] SOP page: Publish (direct) instead of Submit when approval off; Edit / Continue editing draft
+- [x] Editor rebuilt to match the reference screenshot: header (Back · Edit Standard Operation · Cancel / Save As Draft / Finish & Save), name counter x/100 + saved check, SOP Configuration toggles (Cover Sheet / Checklist SOP / Advanced SOP), collapsible Advanced Options (ref no., folder, change summary, key points, collaborate), "Add Steps in to the procedure" + More Options (select all / mark critical / delete selected), per-step 3 columns (Photo/Video with replace/remove/drop, Description with B/I/U/colour/highlight/undo/redo/full-screen + 400-char limit, count and >120 orange PDF hint, toggles Text Only / OK-Not OK / Critical / Linked SOP, Planned Time HH:MM:SS), Move Down / Insert Step / Move Up, "+ Add New Step"
+- [x] API: SOP type editable standard↔advanced; sanitizer keeps only `color`/`background-color` styles (tests added)
+- [ ] Full API + Playwright verification, commit
+
 ## Phase 9 — Marketing site (optional)
 - [ ] Not started (optional per spec)
 
@@ -180,3 +191,10 @@ docker compose --profile test build api-test               # rebuild after packa
 - End of session state: 13 test files / 179 tests green; fresh `docker compose up -d --build` healthy; all web pages 200.
 - Test count by suite: auth, authorization, schema, users, sops, checklists, folders, kanbans, skills, analytics, maintenance = 168.
 - Full `docker compose up -d --build` verified (Docker Desktop occasionally returns `EOF` on container create — just re-run).
+
+### Session 2 — 2026-10-01
+- SAWO branding: logo (`public/assets/images/sawo-logo.webp`), tan header `#a97d53`, flat caramel buttons `#b0825e`, red accent `#c8454a`, Montserrat everywhere incl. SOP PDF and kanban print (`apps/api/src/pdf/brand.ts`).
+- SOP detail page reworked (Edit + ⋮ menu with Versions/Details/Archive); View Step By Step moved into app layout (`(app)/kiosk/[id]`).
+- Step images: same-size white 4:3 frames, no cropping, time badge above, pop-up `Lightbox`; editor image fixes.
+- Kanbans list restyled like STD OPS (Create New menu, filter/sort icons, thumbnail tiles, ••• menu); API list/get now return `createdBy`.
+- Pending: update `apps/api/src/pdf/sawo-logo.ts` to the new logo; run e2e profile (local Playwright browser download failed).

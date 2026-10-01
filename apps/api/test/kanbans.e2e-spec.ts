@@ -38,7 +38,7 @@ describe('kanban CRUD', () => {
       template: '02',
     }).expect(201);
     expect(r.body).toMatchObject({ partCode: 'BRG-6204', orderingType: 'email', orderingEmail: 'buyer@example.com', orderingUrl: null, price: 12.5 });
-    expect(r.body.picture.url).toMatch(/X-Amz-Signature/);
+    expect(r.body.picture.url).toMatch(/^\/api\/files\//);
     expect(r.body.media).toHaveLength(1);
     expect((await ctx.prisma.mediaAsset.findUniqueOrThrow({ where: { id: pic.body.id } })).lifecycleState).toBe('attached');
 
@@ -135,17 +135,11 @@ describe('bulk operations (role-gated)', () => {
   it('bulk print renders a PDF', async () => {
     const pic = await upload(a);
     const k = await create(a, { partCode: 'PR-1', partDescription: '<b>not html</b>', orderingType: 'email', orderingEmail: 'a@b.co', pictureAssetId: pic.body.id, barcode: '12345', color: '#ff0000' }).expect(201);
-    const r = await ctx
-      .http()
-      .post('/api/kanbans/bulk/print')
-      .set(as(a, 'OPERATOR'))
-      .send({ ids: [k.body.id] })
-      .buffer(true)
-      .parse((res, cb) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => cb(null, Buffer.concat(chunks)));
-      });
+    const r = await ctx.http().post('/api/kanbans/bulk/print').set(as(a, 'OPERATOR')).send({ ids: [k.body.id] }).buffer(true).parse((res, cb) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
     expect(r.status).toBe(200);
     expect((r.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
   }, 60_000);

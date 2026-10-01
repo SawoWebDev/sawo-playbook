@@ -101,7 +101,7 @@ export default function SkillsPage() {
 
   return (
     <>
-      <h1>SKILLS</h1>
+
       {error && <div className="error">{error}</div>}
       <div className="row" style={{ marginBottom: 12, gap: 16 }}>
         {m.levels.map((l) => (

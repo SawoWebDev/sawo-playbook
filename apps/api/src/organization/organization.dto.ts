@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class UpdateSettingsDto {
+  @IsOptional() @IsBoolean() approvalRequired?: boolean;
   @IsOptional() @IsInt() @Min(1) @Max(20) approvalQuorum?: number;
   @IsOptional() @IsBoolean() allowSelfApproval?: boolean;
   @IsOptional() @IsBoolean() publicSopViewing?: boolean;

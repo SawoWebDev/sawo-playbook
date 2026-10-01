@@ -11,6 +11,7 @@ import {
   Max,
   MaxLength,
   Min,
+  Matches,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -26,6 +27,8 @@ export class CreateSopDto {
 
 export class UpdateSopDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(300) name?: string;
+  /** Standard ↔ Advanced (step titles); video/document types are created by their own flows (Phase 3). */
+  @IsOptional() @IsIn(CREATABLE_SOP_TYPES) type?: (typeof CREATABLE_SOP_TYPES)[number];
   @IsOptional() @IsString() @MinLength(1) @MaxLength(60) referenceNo?: string;
   /** null moves the SOP to the root. */
   @IsOptional() @IsUUID() folderId?: string | null;
@@ -40,11 +43,29 @@ export class ListSopsQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) offset?: number;
 }
 
+const COLOR = /^#[0-9a-fA-F]{6}$/;
+
 export class VersionConfigDto {
   @IsOptional() @IsBoolean() cover_sheet?: boolean;
   @IsOptional() @IsBoolean() collaborate?: boolean;
   @IsOptional() @IsBoolean() checklist_sop?: boolean;
   @IsOptional() @IsBoolean() key_points_enabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(40) language?: string;
+  @IsOptional() @IsIn(['Landscape', 'Portrait']) pdf_orientation?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(12) steps_per_page?: number;
+  @IsOptional() @IsBoolean() full_image?: boolean;
+  @IsOptional() @IsBoolean() step_by_step_pdf?: boolean;
+  @IsOptional() @IsString() @MaxLength(20) border_width?: string;
+  @IsOptional() @Matches(COLOR) header_footer_color?: string;
+  @IsOptional() @IsIn(['Black', 'White']) header_footer_text_color?: string;
+  @IsOptional() @IsString() @MaxLength(200) red_card_text?: string;
+  @IsOptional() @Matches(COLOR) red_bg?: string;
+  @IsOptional() @IsIn(['Black', 'White']) red_text?: string;
+  @IsOptional() @Matches(COLOR) green_bg?: string;
+  @IsOptional() @IsIn(['Black', 'White']) green_text?: string;
+  @IsOptional() @IsBoolean() is_critical?: boolean;
+  @IsOptional() @IsString() @MaxLength(500) video_link?: string;
+  @IsOptional() @IsString() @MaxLength(40) total_time_required?: string;
 }
 
 export class UpdateVersionDto {

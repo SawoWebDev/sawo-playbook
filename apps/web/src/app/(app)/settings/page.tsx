@@ -11,7 +11,7 @@ interface OrgInfo {
   name: string;
   status: 'active' | 'pending_deletion' | 'suspended' | 'deleted';
   deletionScheduledFor: string | null;
-  settings: { approvalQuorum: number; allowSelfApproval: boolean; publicSopViewing: boolean };
+  settings: { approvalRequired: boolean; approvalQuorum: number; allowSelfApproval: boolean; publicSopViewing: boolean };
 }
 
 export default function SettingsPage() {
@@ -30,8 +30,8 @@ export default function SettingsPage() {
   async function save(e: FormEvent) {
     e.preventDefault();
     try {
-      const { approvalQuorum, allowSelfApproval, publicSopViewing } = org!.settings;
-      setOrg(await api<OrgInfo>('/organization/settings', { method: 'PATCH', body: { approvalQuorum, allowSelfApproval, publicSopViewing } }));
+      const { approvalRequired, approvalQuorum, allowSelfApproval, publicSopViewing } = org!.settings;
+      setOrg(await api<OrgInfo>('/organization/settings', { method: 'PATCH', body: { approvalRequired, approvalQuorum, allowSelfApproval, publicSopViewing } }));
       setMsg({ ok: true, text: 'Settings saved.' });
     } catch (err) {
       setMsg({ ok: false, text: errorMessage(err) });
@@ -48,15 +48,34 @@ export default function SettingsPage() {
 
       <form className="card" onSubmit={save} style={{ maxWidth: 560 }}>
         <div className="field">
-          <label htmlFor="quorum">Approval quorum (distinct approvers required)</label>
-          <input id="quorum" type="number" min={1} max={20} value={org.settings.approvalQuorum} onChange={(e) => setSetting('approvalQuorum', Number(e.target.value))} />
-        </div>
-        <div className="field">
           <label className="row" style={{ fontWeight: 400 }}>
-            <input type="checkbox" style={{ width: 'auto' }} checked={org.settings.allowSelfApproval} onChange={(e) => setSetting('allowSelfApproval', e.target.checked)} />
-            Allow the submitter of a version to also approve it
+            <input
+              type="checkbox"
+              role="switch"
+              className="switch"
+              checked={org.settings.approvalRequired}
+              onChange={(e) => setSetting('approvalRequired', e.target.checked)}
+            />
+            Require approval before publishing
           </label>
+          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+            Off: “Finish &amp; Save” in the editor publishes the SOP immediately. On: new versions go through review by approvers first.
+          </p>
         </div>
+        {org.settings.approvalRequired && (
+          <>
+            <div className="field">
+              <label htmlFor="quorum">Approval quorum (distinct approvers required)</label>
+              <input id="quorum" type="number" min={1} max={20} value={org.settings.approvalQuorum} onChange={(e) => setSetting('approvalQuorum', Number(e.target.value))} />
+            </div>
+            <div className="field">
+              <label className="row" style={{ fontWeight: 400 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={org.settings.allowSelfApproval} onChange={(e) => setSetting('allowSelfApproval', e.target.checked)} />
+                Allow the submitter of a version to also approve it
+              </label>
+            </div>
+          </>
+        )}
         <div className="field">
           <label className="row" style={{ fontWeight: 400 }}>
             <input type="checkbox" style={{ width: 'auto' }} checked={org.settings.publicSopViewing} onChange={(e) => setSetting('publicSopViewing', e.target.checked)} />

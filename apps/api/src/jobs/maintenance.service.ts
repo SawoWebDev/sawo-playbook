@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { TokenService } from '../auth/token.service';
 import { countMediaReferences, transitionMedia } from '../media/media-lifecycle';
@@ -44,8 +44,9 @@ async function allowPurge(tx: Tx) {
  * schedule can be exercised deterministically in tests.
  */
 @Injectable()
-export class MaintenanceService {
+export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('Maintenance');
+  private timer?: NodeJS.Timeout;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -53,6 +54,23 @@ export class MaintenanceService {
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
   ) {}
+
+  /** Runs the purge workflow on a timer inside the API process (disabled in tests, which call `runAll` directly). */
+  onModuleInit() {
+    if (process.env.NODE_ENV === 'test') return;
+    const every = Number(process.env.MAINTENANCE_INTERVAL_MS ?? 60 * 60 * 1000);
+    const tick = () =>
+      this.runAll()
+        .then((r) => this.logger.log(`maintenance: ${JSON.stringify(r)}`))
+        .catch((e: Error) => this.logger.error(`maintenance failed: ${e.message}`));
+    this.timer = setInterval(tick, every);
+    this.timer.unref();
+    setTimeout(tick, 30_000).unref();
+  }
+
+  onModuleDestroy() {
+    clearInterval(this.timer);
+  }
 
   async runAll(now = new Date()) {
     const finalized = await this.finalizeOrgDeletions(now);

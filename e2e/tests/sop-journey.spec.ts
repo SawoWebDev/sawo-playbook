@@ -45,6 +45,13 @@ test('owner signs up and invites the team (emails delivered via Mailpit)', async
   for (const a of Object.values(actors)) await expect(owner.page.getByRole('cell', { name: a.mail })).toBeVisible();
   // pending invitations list is empty again
   await expect(owner.page.getByText('No pending invitations.')).toBeVisible();
+
+  // This organization uses the optional approval workflow (off by default)
+  await owner.page.goto('/settings');
+  await owner.page.getByLabel('Require approval before publishing').check();
+  await owner.page.getByLabel(/Approval quorum/).fill('3');
+  await owner.page.getByRole('button', { name: 'Save settings' }).click();
+  await expect(owner.page.getByText('Settings saved.')).toBeVisible();
 });
 
 test('owner creates a Checklist SOP with steps and a step image', async () => {
@@ -60,28 +67,34 @@ test('owner creates a Checklist SOP with steps and a step image', async () => {
   await expect(page).toHaveURL(/\/sops\/[0-9a-f-]+\/edit\/[0-9a-f-]+/);
 
   await page.getByLabel('Checklist SOP').check();
+  await page.getByRole('button', { name: /Advanced Options/ }).click();
   await page.getByLabel('Change summary').fill('Initial release');
 
-  await page.getByRole('button', { name: '+ Add step' }).click();
+  await page.getByRole('button', { name: '+ Add New Step' }).click();
   const step1 = page.locator('.editor-step').nth(0);
   await step1.locator('.rte').click();
   await page.keyboard.type('Confirm the light curtain is active before cycling the press.');
-  await step1.getByLabel('Critical step').check();
-  await step1.locator('input[type=number]').fill('30');
-  await step1.locator('input[type=file]').setInputFiles({ name: 'guard.png', mimeType: 'image/png', buffer: PNG });
+  await step1.getByLabel('Is this step critical?').check();
+  await step1.getByPlaceholder('HH:MM:SS').fill('00:00:30');
+  await step1.getByPlaceholder('HH:MM:SS').press('Tab');
+  await step1.locator('input[type=file]').first().setInputFiles({ name: 'guard.png', mimeType: 'image/png', buffer: PNG });
   await expect(step1.locator('.thumb img')).toHaveCount(1);
-  await expect(step1.locator('.thumb img')).toHaveAttribute('src', /X-Amz-Signature=/);
+  await expect(step1.locator('.thumb img')).toHaveAttribute('src', /\/api\/files\/.+sig=/);
 
-  await page.getByRole('button', { name: '+ Add step' }).click();
+  await page.getByRole('button', { name: '+ Add New Step' }).click();
   const step2 = page.locator('.editor-step').nth(1);
   await step2.locator('.rte').click();
   await page.keyboard.type('Check hydraulic oil level in the sight glass.');
-  await step2.locator('input[type=number]').fill('60');
+  await step2.getByPlaceholder('HH:MM:SS').fill('00:01:00');
+  await step2.getByPlaceholder('HH:MM:SS').press('Tab');
   await expect(page.getByText('Cycle time 1m 30s')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Save & close' }).click();
-  await expect(page).toHaveURL(/\/sops\/[0-9a-f-]+\?v=/);
-  sopUrl = page.url().split('?')[0].replace(/^https?:\/\/[^/]+/, '');
+  // Save As Draft keeps the author in the editor
+  await page.getByRole('button', { name: 'Save As Draft' }).click();
+  await expect(page.getByText('Draft saved.')).toBeVisible();
+  await expect(page).toHaveURL(/\/edit\//);
+  sopUrl = new URL(page.url()).pathname.replace(/\/edit\/.*$/, '');
+  await page.goto(sopUrl);
   await expect(page.getByRole('heading', { name: SOP_NAME })).toBeVisible();
   await expect(page.getByText('2 steps')).toBeVisible();
   await expect(page.getByText('Confirm the light curtain is active')).toBeVisible();
@@ -134,7 +147,7 @@ test('share panel: QR image, print labels, QR landing page (logged in and out)',
   expect(m).not.toBeNull();
   qrToken = m![1];
 
-  const [labels] = await Promise.all([page.context().waitForEvent('page'), page.getByRole('link', { name: 'Print labels' }).click()]);
+  const [labels] = await Promise.all([page.context().waitForEvent('page'), page.getByRole('link', { name: 'View or Print QR Code' }).click()]);
   await expect(labels.locator('.qr-label')).toHaveCount(1);
   await labels.getByLabel('Copies').fill('4');
   await expect(labels.locator('.qr-label')).toHaveCount(4);
@@ -189,14 +202,14 @@ test('operator runs the checklist against the published version', async () => {
 test('kiosk mode steps through the current version', async () => {
   const { page } = actors.operator;
   await page.goto(sopUrl.replace('/sops/', '/kiosk/'));
-  await expect(page.getByText('Step 1 of 2')).toBeVisible();
+  await expect(page.getByLabel('Go to step')).toHaveValue('0');
   await expect(page.getByText('CRITICAL')).toBeVisible();
-  await page.getByRole('button', { name: 'Next →' }).click();
-  await expect(page.getByText('Step 2 of 2')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Next →' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByLabel('Go to step')).toHaveValue('1');
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
   await page.keyboard.press('ArrowLeft');
-  await expect(page.getByText('Step 1 of 2')).toBeVisible();
-  await page.getByRole('button', { name: 'Exit' }).click();
+  await expect(page.getByLabel('Go to step')).toHaveValue('0');
+  await page.getByRole('link', { name: 'Back' }).click();
   await expect(page).toHaveURL(new RegExp(`${sopUrl}$`));
 });
 
@@ -226,14 +239,16 @@ test('owner records a skills-matrix assessment; operator sees only their own row
 test('editing the published SOP creates version 1.002 while 1.001 stays current', async () => {
   const { page } = actors.owner;
   await page.goto(sopUrl);
-  await page.getByRole('button', { name: 'Edit (new version)' }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(page).toHaveURL(/\/edit\//);
-  await expect(page.getByText('Editing v1.002 (draft)')).toBeVisible();
+  await expect(page.getByText('v1.002 draft')).toBeVisible();
   await expect(page.locator('.editor-step')).toHaveCount(2);
-  await page.getByRole('button', { name: '+ Add step' }).click();
+  await page.getByRole('button', { name: '+ Add New Step' }).click();
   await page.locator('.editor-step').nth(2).locator('.rte').click();
   await page.keyboard.type('Record the check in the shift log.');
-  await page.getByRole('button', { name: 'Save & close' }).click();
+  await page.getByRole('button', { name: 'Save As Draft' }).click();
+  await expect(page.getByText('Draft saved.')).toBeVisible();
+  await page.goto(sopUrl);
   await expect(page.getByText('Version 1.002')).toBeVisible();
   await expect(page.getByText('3 steps')).toBeVisible();
 

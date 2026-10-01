@@ -12,7 +12,29 @@ import { CreateSopDto, ListSopsQuery, SaveStepsDto, UpdateSopDto, UpdateVersionD
 import { ACTIVE_UNPUBLISHED, recomputeSopStatus, versionLabel } from './sop-status';
 import { SopVersionRepository, StepWrite } from './sop-version.repository';
 
-export const DEFAULT_CONFIG = { cover_sheet: false, collaborate: false, checklist_sop: false, key_points_enabled: false };
+export const DEFAULT_CONFIG = {
+  cover_sheet: false,
+  collaborate: false,
+  checklist_sop: false,
+  key_points_enabled: false,
+  // Advanced options
+  language: 'English',
+  pdf_orientation: 'Landscape',
+  steps_per_page: 6,
+  full_image: true,
+  step_by_step_pdf: false,
+  border_width: '',
+  header_footer_color: '#ffffff',
+  header_footer_text_color: 'Black',
+  red_card_text: '',
+  red_bg: '#d40000',
+  red_text: 'White',
+  green_bg: '#1a9b48',
+  green_text: 'White',
+  is_critical: false,
+  video_link: '',
+  total_time_required: '',
+};
 export type VersionConfig = typeof DEFAULT_CONFIG;
 
 /** Editors (drafting) and Approvers (reviewing) may see unpublished versions; everyone else only published. */
@@ -326,13 +348,17 @@ export class SopsService {
   }
 
   async updateSop(actor: AuthUser, sopId: string, dto: UpdateSopDto) {
-    await this.findSop(actor, sopId);
+    const existing = await this.findSop(actor, sopId);
+    if (dto.type && !['standard', 'advanced'].includes(existing.type)) {
+      throw new BadRequestException('The type of a video or document SOP cannot be changed');
+    }
     if (dto.folderId) await this.assertFolder(actor, dto.folderId);
     try {
       await this.prisma.sop.update({
         where: { id: sopId },
         data: {
           name: dto.name?.trim(),
+          type: dto.type,
           referenceNo: dto.referenceNo?.trim(),
           folderId: dto.folderId === undefined ? undefined : dto.folderId,
         },

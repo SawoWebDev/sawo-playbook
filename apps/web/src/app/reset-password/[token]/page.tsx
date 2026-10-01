@@ -26,7 +26,10 @@ export default function ResetPasswordPage() {
   return (
     <div className="auth-wrap">
       <form className="card auth-card" onSubmit={submit}>
-        <div className="brand">GembaDocs</div>
+        <div className="brand">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/assets/images/sawo-logo.webp" alt="SAWO" width={479} height={300} />
+        </div>
         <h1>Choose a new password</h1>
         {done ? (
           <p className="success">

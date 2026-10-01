@@ -9,7 +9,8 @@ test('bulk import, filter, bulk edit and create a card', async ({ browser }) => 
   await expect(page.getByText('No kanban cards found.')).toBeVisible();
 
   // Invalid CSV: row-level errors, nothing imported
-  await page.getByRole('button', { name: 'Bulk import' }).click();
+  await page.getByRole('button', { name: '+ Create New' }).click();
+  await page.getByRole('button', { name: 'Bulk import (CSV)' }).click();
   const box = page.getByPlaceholder('…or paste CSV here');
   await box.fill('part_code,ordering_type,ordering_email\nGOOD-1,email,buyer@example.com\n,email,buyer@example.com\nBAD-2,email,not-an-email\n');
   await page.getByRole('button', { name: 'Validate' }).click();
@@ -21,7 +22,8 @@ test('bulk import, filter, bulk edit and create a card', async ({ browser }) => 
   await expect(page.getByText('No kanban cards found.')).toBeVisible();
 
   // Valid CSV
-  await page.getByRole('button', { name: 'Bulk import' }).click();
+  await page.getByRole('button', { name: '+ Create New' }).click();
+  await page.getByRole('button', { name: 'Bulk import (CSV)' }).click();
   await page.getByPlaceholder('…or paste CSV here').fill(
     [
       'part_code,part_description,supplier,location,ordering_type,ordering_url,ordering_email,tag',
@@ -58,7 +60,8 @@ test('bulk import, filter, bulk edit and create a card', async ({ browser }) => 
   await expect(cards.filter({ hasText: 'Rack Z9' })).toHaveCount(2);
 
   // Create a single card; ordering target validation
-  await page.getByRole('button', { name: '+ New card' }).click();
+  await page.getByRole('button', { name: '+ Create New' }).click();
+  await page.getByRole('button', { name: 'New card', exact: true }).click();
   await page.getByLabel('Part code *').fill('SEAL-42');
   await page.getByLabel('Part description').fill('Piston seal kit');
   await page.locator('.dialog select').filter({ hasText: 'Web link' }).selectOption('email');

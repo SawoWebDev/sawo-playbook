@@ -4,7 +4,6 @@ import { AuditAction, AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
 import { RequestMeta } from '../common/decorators';
 import { Permission, roleHasPermission } from '../common/permissions';
-import { QueueService } from '../jobs/queue.service';
 import { markReferenced } from '../media/media-lifecycle';
 import { isUniqueViolation, PrismaService } from '../prisma/prisma.service';
 import { recomputeSopStatus, versionLabel } from './sop-status';
@@ -24,7 +23,6 @@ export class SopWorkflowService {
     private readonly repo: SopVersionRepository,
     private readonly sops: SopsService,
     private readonly audit: AuditService,
-    private readonly queues: QueueService,
   ) {}
 
   async submit(actor: AuthUser, sopId: string, versionId: string, changeSummary: string | undefined, meta: RequestMeta) {
@@ -139,7 +137,45 @@ export class SopWorkflowService {
       );
     });
     // Pre-render the one canonical PDF in the background (§9); first request falls back to inline rendering.
-    await this.queues.add('pdf', 'render', { organizationId: actor.organizationId, versionId }, { jobId: `pdf-${versionId}` });
+    return this.sops.getVersion(actor, sopId, versionId);
+  }
+
+  /**
+   * "Finish & Save" when the organization does not require approval: the DRAFT is
+   * published directly by an Editor+. Everything else (versioning, immutability,
+   * audit) is identical to the approved path.
+   */
+  async finish(actor: AuthUser, sopId: string, versionId: string, changeSummary: string | undefined, meta: RequestMeta) {
+    await this.sops.findSop(actor, sopId);
+    const settings = await this.prisma.organizationSettings.findUniqueOrThrow({ where: { organizationId: actor.organizationId } });
+    if (settings.approvalRequired) {
+      throw new ForbiddenException('This organization requires approval before publishing — submit the version for approval instead');
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const v = await this.repo.lockDraft(tx, actor.organizationId, sopId, versionId);
+      const steps = await tx.sopStep.count({ where: { sopVersionId: v.id } });
+      if (steps === 0) throw new BadRequestException('Add at least one step before publishing');
+      const now = new Date();
+      await tx.sopVersion.update({
+        where: { id: v.id },
+        data: {
+          lifecycleState: 'PUBLISHED',
+          changeSummary: changeSummary ?? undefined,
+          submittedById: actor.id,
+          submittedAt: now,
+          publishedById: actor.id,
+          publishedAt: now,
+        },
+      });
+      await tx.sop.update({ where: { id: sopId }, data: { currentPublishedVersionId: v.id } });
+      const media = await tx.sopStepMedia.findMany({ where: { sopStep: { sopVersionId: v.id } }, select: { mediaAssetId: true } });
+      await markReferenced(tx, media.map((m) => m.mediaAssetId));
+      await recomputeSopStatus(tx, sopId);
+      await this.audit.record(
+        { action: AuditAction.SopVersionPublished, organizationId: actor.organizationId, actorId: actor.id, entityType: 'sop_version', entityId: v.id, metadata: { sopId, approval: 'not_required' }, ...meta },
+        tx,
+      );
+    });
     return this.sops.getVersion(actor, sopId, versionId);
   }
 

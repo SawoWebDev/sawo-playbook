@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { AuthProvider } from '@/lib/auth';
+import '@fontsource-variable/montserrat';
 import './globals.css';
+import './editor.css';
 
 export const metadata: Metadata = {
   title: 'GembaDocs',

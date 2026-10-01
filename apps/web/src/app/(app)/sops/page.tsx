@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { SopStatusBadge } from '@/components/StatusBadge';
+import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { buildTree, flatten, type FolderRow } from '@/lib/folders';
@@ -40,6 +41,7 @@ function SopsList() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [creating, setCreating] = useState<SopType | null>(null);
   const [newName, setNewName] = useState('');
   const [newRef, setNewRef] = useState('');
@@ -98,42 +100,14 @@ function SopsList() {
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 16 }}>
-        <h1 style={{ margin: 0 }}>STD OPS</h1>
-        <span className="muted">{total} procedures</span>
-        <div className="spacer" />
-        <input placeholder="Search name or reference…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 240 }} />
-        <select value={folder} onChange={(e) => setFolder(e.target.value)} style={{ width: 200 }}>
-          <option value="">All folders</option>
-          <option value="root">(not in a folder)</option>
-          {folderOptions.map((f) => (
-            <option key={f.id} value={f.id}>
-              {'  '.repeat(f.depth)}
-              {f.name}
-            </option>
-          ))}
-        </select>
-        {folder && folder !== 'root' && (
-          <label className="row" style={{ margin: 0, fontWeight: 400, gap: 4 }}>
-            <input type="checkbox" style={{ width: 'auto' }} checked={includeSub} onChange={(e) => setIncludeSub(e.target.checked)} />
-            subfolders
-          </label>
-        )}
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 170 }}>
-          <option value="">All (not archived)</option>
-          <option value="published">Published</option>
-          <option value="draft">Draft</option>
-          <option value="pending_approval">Pending approval</option>
-          <option value="approved">Approved</option>
-          <option value="archived">Archived</option>
-        </select>
+      <SubbarLeft>
         {canCreate && (
           <div className="menu">
-            <button className="btn btn-primary" onClick={() => setMenuOpen((o) => !o)}>
+            <button className="btn btn-orange" onClick={() => setMenuOpen((o) => !o)}>
               + Create New
             </button>
             {menuOpen && (
-              <div className="menu-list" onMouseLeave={() => setMenuOpen(false)}>
+              <div className="menu-list" style={{ left: 0, right: 'auto' }} onMouseLeave={() => setMenuOpen(false)}>
                 {CREATE_OPTIONS.map((o) => (
                   <button
                     key={o.type}
@@ -150,40 +124,73 @@ function SopsList() {
             )}
           </div>
         )}
+      </SubbarLeft>
+      <SubbarRight>
+        <Link href="/folders" className="icon-btn" aria-label="Folders" title="Folders">
+          {Icons.folder}
+        </Link>
+        <button className={`icon-btn ${showFilters ? 'on' : ''}`} aria-label="Filter" title="Filter" onClick={() => setShowFilters((o) => !o)}>
+          {Icons.filter}
+        </button>
+      </SubbarRight>
+
+      <div className="row" style={{ marginBottom: 8 }}>
+        <input placeholder="Search name or reference…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 260 }} />
+        {showFilters && (
+          <>
+            <select value={folder} onChange={(e) => setFolder(e.target.value)} style={{ width: 200 }}>
+              <option value="">All folders</option>
+              <option value="root">(not in a folder)</option>
+              {folderOptions.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {'  '.repeat(f.depth)}
+                  {f.name}
+                </option>
+              ))}
+            </select>
+            {folder && folder !== 'root' && (
+              <label className="row" style={{ margin: 0, fontWeight: 400, gap: 4 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={includeSub} onChange={(e) => setIncludeSub(e.target.checked)} />
+                subfolders
+              </label>
+            )}
+            <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 170 }}>
+              <option value="">All (not archived)</option>
+              <option value="published">Published</option>
+              <option value="draft">Draft</option>
+              <option value="pending_approval">Pending approval</option>
+              <option value="approved">Approved</option>
+              <option value="archived">Archived</option>
+            </select>
+          </>
+        )}
       </div>
       {error && <div className="error">{error}</div>}
 
       {items.length === 0 ? (
         <p className="muted">No procedures found.</p>
       ) : (
-        <div className="grid">
+        <div className="sop-grid">
           {items.map((s) => (
-            <Link key={s.id} href={`/sops/${s.id}`} className="card sop-card">
-              <div className="row" style={{ gap: 6 }}>
-                <span className="ref">{s.referenceNo}</span>
-                <div className="spacer" />
-                {s.activeVersion?.rejected ? (
-                  <span className="badge badge-red">Rejected</span>
-                ) : (
-                  <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} />
-                )}
+            <Link key={s.id} href={`/sops/${s.id}`} className="sop-card">
+              <div className="name" title={s.name}>
+                {s.name}
               </div>
-              <div className="name">{s.name}</div>
-              <dl className="kv">
-                <dt>Folder</dt>
-                <dd>{s.folder?.name ?? '—'}</dd>
-                <dt>Date raised</dt>
-                <dd>{fmtDate(s.createdAt)}</dd>
-                <dt>Created by</dt>
-                <dd>{s.createdBy?.name ?? '—'}</dd>
-                <dt>Last modified</dt>
-                <dd>{fmtDate(s.updatedAt)}</dd>
-                <dt>Version</dt>
-                <dd>
-                  {s.currentPublishedVersion ? `v${s.currentPublishedVersion.label}` : 'unpublished'}
-                  {s.activeVersion && s.currentPublishedVersion ? ` (v${s.activeVersion.label} in progress)` : ''}
-                </dd>
-              </dl>
+              {s.status !== 'published' && (
+                <span className="badge">
+                  {s.activeVersion?.rejected ? (
+                    <span className="badge badge-red">Rejected</span>
+                  ) : (
+                    <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} />
+                  )}
+                </span>
+              )}
+              <span className="more">•••</span>
+              <div className="line">Reference No: <b>{s.referenceNo}</b></div>
+              <div className="line">Folder: <b>{s.folder?.name ?? 'N/A'}</b></div>
+              <div className="line">Date Raised: <b>{fmtDate(s.createdAt)}</b></div>
+              <div className="line">Created By: <b>{s.createdBy?.name ?? 'N/A'}</b></div>
+              <div className="line">Last Modified: <b>{fmtDate(s.updatedAt)}</b></div>
             </Link>
           ))}
         </div>

@@ -138,6 +138,8 @@ model Organization {
 // §6.1a
 model OrganizationSettings {
   organizationId    String       @id @map("organization_id") @db.Uuid
+  /// When false, "Finish & Save" publishes a draft directly (no approval workflow).
+  approvalRequired  Boolean      @default(false) @map("approval_required")
   approvalQuorum    Int          @default(3) @map("approval_quorum")
   allowSelfApproval Boolean      @default(false) @map("allow_self_approval")
   publicSopViewing  Boolean      @default(false) @map("public_sop_viewing")

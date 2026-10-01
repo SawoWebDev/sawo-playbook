@@ -115,6 +115,28 @@ describe('SOP creation (§17 worked example)', () => {
     expect(reopened.body.steps).toHaveLength(2);
   });
 
+  it('keeps text colour / highlight but strips every other style', async () => {
+    const { sopId, versionId } = await createSop(a);
+    const res = await saveSteps(a, sopId, versionId, [
+      {
+        description:
+          '<p><span style="color: #b42318">red</span> <span style="background-color: rgb(255, 241, 199)">hi</span> ' +
+          '<span style="position: fixed; background-image: url(javascript:x)">bad</span> <span style="color: expression(alert(1))">x</span></p>',
+      },
+    ]).then((r) => (expect(r.status).toBe(200), r));
+    const html = res.body.steps[0].description as string;
+    expect(html).toContain('color:#b42318');
+    expect(html).toContain('background-color:rgb(255, 241, 199)');
+    expect(html).not.toMatch(/position|background-image|javascript|expression/);
+  });
+
+  it('SOP type can be switched between standard and advanced', async () => {
+    const { sopId } = await createSop(a);
+    const r = await ctx.http().patch(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).send({ type: 'advanced' }).expect(200);
+    expect(r.body.type).toBe('advanced');
+    await ctx.http().patch(`/api/sops/${sopId}`).set(as(a, 'EDITOR')).send({ type: 'video' }).expect(400);
+  });
+
   it('Operator → 403 on step save', async () => {
     const { sopId, versionId } = await createSop(a);
     const r = await saveSteps(a, sopId, versionId, [{ description: 'x' }], 'OPERATOR');
@@ -145,7 +167,10 @@ describe('media upload (§7.8)', () => {
     const r = await upload(a);
     expect(r.status).toBe(201);
     expect(r.body).toMatchObject({ type: 'image', mimeType: 'image/png', width: 1, height: 1 });
-    expect(r.body.url).toMatch(/X-Amz-Signature=/);
+    expect(r.body.url).toMatch(/^\/api\/files\/.+sig=/);
+    const file = await ctx.http().get(r.body.url).expect(200);
+    expect(file.headers['content-type']).toBe('image/png');
+    await ctx.http().get(r.body.url.replace(/sig=[^&]+/, 'sig=bad')).expect(404);
   });
 
   it('rejects content that is not what it claims to be', async () => {
@@ -277,6 +302,42 @@ describe('approval state machine (§6.3)', () => {
     await saveSteps(t, s2, v2, [{ description: 'x' }]);
     await ctx.http().post(`/api/sops/${s2}/versions/${v2}/submit`).set(as(t, 'EDITOR')).send({}).expect(200);
     await ctx.http().post(`/api/sops/${s2}/versions/${v2}/decisions`).set(demoted.auth).send({ decision: 'approved' }).expect(403);
+  });
+});
+
+describe('publishing without approval (org setting approval_required=false, the default)', () => {
+  it('Finish & Save publishes a draft directly; editing again creates a new version', async () => {
+    const t = await createTenant(ctx, 'noapproval');
+    expect((await ctx.prisma.organizationSettings.findUniqueOrThrow({ where: { organizationId: t.organizationId } })).approvalRequired).toBe(false);
+    const { sopId, versionId } = await createSop(t);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'EDITOR')).send({}).expect(400); // no steps
+    await saveSteps(t, sopId, versionId, [{ description: 'Do it' }]);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'OPERATOR')).send({}).expect(403);
+    const r = await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'EDITOR')).send({ changeSummary: 'v1' }).expect(200);
+    expect(r.body.lifecycleState).toBe('PUBLISHED');
+    const sop = await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } });
+    expect(sop).toMatchObject({ status: 'published', currentPublishedVersionId: versionId });
+    expect(await ctx.prisma.auditLog.count({ where: { action: 'sop.version.published', entityId: versionId } })).toBe(1);
+    // published content is immutable; a new edit is a new version
+    expect((await saveSteps(t, sopId, versionId, [{ description: 'tamper' }])).status).toBe(409);
+    const v2 = await ctx.http().post(`/api/sops/${sopId}/versions`).set(as(t, 'EDITOR')).expect(201);
+    await saveSteps(t, sopId, v2.body.id, [{ description: 'Do it better' }]);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${v2.body.id}/finish`).set(as(t, 'EDITOR')).send({}).expect(200);
+    expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).currentPublishedVersionId).toBe(v2.body.id);
+  });
+
+  it('when the organization requires approval, finish is refused', async () => {
+    const t = await createTenant(ctx, 'approval');
+    await ctx.http().patch('/api/organization/settings').set(as(t, 'OWNER')).send({ approvalRequired: true }).expect(200);
+    const { sopId, versionId } = await createSop(t);
+    await saveSteps(t, sopId, versionId, [{ description: 'x' }]);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'EDITOR')).send({}).expect(403);
+  });
+
+  it('cross-tenant finish is 404', async () => {
+    const { sopId, versionId } = await createSop(a);
+    await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
+    await expectCrossTenantNotFound(() => ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(b, 'OWNER')).send({}));
   });
 });
 
@@ -447,25 +508,17 @@ describe('QR resolver (§5)', () => {
   });
 });
 
-describe('PDF export (Gotenberg)', () => {
-  it('renders a published version once and reuses the canonical PDF (Invariant #6)', async () => {
-    const { sopId, versionId } = await publishedSop(a, 'PDF SOP');
-    const r1 = await ctx.http().get(`/api/sops/${sopId}/versions/${versionId}/pdf`).set(as(a, 'OPERATOR')).buffer(true).parse((res, cb) => {
+describe('PDF export', () => {
+  it('renders a PDF for a published version', async () => {
+    const { sopId, versionId } = await publishedSop(a, 'Print SOP');
+    const r = await ctx.http().get(`/api/sops/${sopId}/versions/${versionId}/print`).set(as(a, 'OPERATOR')).buffer(true).parse((res, cb) => {
       const chunks: Buffer[] = [];
       res.on('data', (c: Buffer) => chunks.push(c));
       res.on('end', () => cb(null, Buffer.concat(chunks)));
     });
-    expect(r1.status).toBe(200);
-    expect(r1.headers['content-type']).toBe('application/pdf');
-    expect((r1.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
-    const v = await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: versionId } });
-    expect(v.pdfAssetId).not.toBeNull();
-    const asset = await ctx.prisma.mediaAsset.findUniqueOrThrow({ where: { id: v.pdfAssetId! } });
-    expect(asset.lifecycleState).toBe('referenced');
-    await ctx.http().get(`/api/sops/${sopId}/versions/${versionId}/pdf`).set(as(a, 'OPERATOR')).expect(200);
-    expect((await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: versionId } })).pdfAssetId).toBe(v.pdfAssetId);
-    // canonical PDF can never be replaced
-    await expect(ctx.prisma.sopVersion.update({ where: { id: versionId }, data: { pdfAssetId: null } })).rejects.toThrow(/cannot be replaced/);
+    expect(r.status).toBe(200);
+    expect(r.headers['content-type']).toBe('application/pdf');
+    expect((r.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
   }, 60_000);
 });
 
@@ -481,7 +534,7 @@ describe('cross-tenant isolation — SOP endpoints (§8 Phase 1 / 1.5)', () => {
       () => ctx.http().post(`/api/sops/${sopId}/archive`).set(B).send({ archived: true }),
       () => ctx.http().get(`/api/sops/${sopId}/current`).set(B),
       () => ctx.http().get(`/api/sops/${sopId}/versions/${versionId}`).set(B),
-      () => ctx.http().get(`/api/sops/${sopId}/versions/${versionId}/pdf`).set(B),
+      () => ctx.http().get(`/api/sops/${sopId}/versions/${versionId}/print`).set(B),
       () => ctx.http().get(`/api/sops/${sopId}/versions/${versionId}/approvals`).set(B),
       () => ctx.http().post(`/api/sops/${sopId}/versions`).set(B),
       () => ctx.http().patch(`/api/sops/${draftSop}/versions/${draftV}`).set(B).send({ changeSummary: 'x' }),

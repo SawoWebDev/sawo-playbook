@@ -37,7 +37,7 @@ test('enable 2FA from profile, then login requires a valid code', async ({ brows
   // next time-step code (the current step was consumed at enrolment)
   await page.getByLabel('Authentication code').fill(totp(secret, 1));
   await page.getByRole('button', { name: 'Verify' }).click();
-  await expect(page.getByRole('heading', { name: 'Welcome, Max Mfa' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^STD OPS/ })).toBeVisible();
 
   // admin view shows 2FA on
   await page.goto('/users');

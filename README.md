@@ -8,20 +8,20 @@ QR/PDF sharing, checklists, kanban cards, skills matrix, folders and analytics.
 - Decisions: [docs/decisions](docs/decisions) · Security: [docs/security-checklist.md](docs/security-checklist.md)
 
 ## Stack
-NestJS 11 + Prisma 6 (PostgreSQL 16) · Next.js 15 · Redis 7 + BullMQ · MinIO (S3) · Gotenberg 8 (PDF) — all in Docker.
+NestJS 11 + Prisma 6 (PostgreSQL 16) · Next.js 15 — three Docker containers (db, api, web). Uploads are stored on a Docker volume; SOP and kanban PDFs are rendered in the API container by headless Chromium (no separate PDF service).
 
 ```
-apps/api   NestJS REST API (/api/*), BullMQ worker (src/worker.ts), Prisma schema + migrations
+apps/api   NestJS REST API (/api/*), Prisma schema + migrations
 apps/web   Next.js app; proxies /api/* to the API so the browser sees one origin
 ```
 
 ## Run locally (Docker)
 ```bash
-docker compose up -d --build      # db, redis, minio, gotenberg, api, worker, web
+docker compose up -d --build      # db, api, web
 open http://localhost:3000        # create an organization via "Create an account"
 ```
-Ports can be changed with `GEMBA_WEB_PORT`, `GEMBA_API_PORT`, `GEMBA_DB_PORT`, `GEMBA_REDIS_PORT`, `GEMBA_MINIO_PORT`, `GEMBA_PDF_PORT`.
-Invitation / password-reset emails are delivered to Mailpit in dev: http://localhost:8025.
+Ports can be changed with `GEMBA_WEB_PORT`, `GEMBA_API_PORT`, `GEMBA_DB_PORT`.
+Without `SMTP_URL`, invitation / password-reset emails are printed in the API log (`docker compose logs api`).
 
 ## Tests
 ```bash
@@ -39,7 +39,11 @@ published-version immutability at all three layers, the Invariant #19 concurrenc
 
 ## Production
 ```bash
-cp .env.example .env    # set POSTGRES_PASSWORD, JWT_ACCESS_SECRET, S3_*, PUBLIC_APP_URL, S3_PUBLIC_ENDPOINT
+cp .env.example .env    # set POSTGRES_PASSWORD, JWT_ACCESS_SECRET, MFA_ENCRYPTION_KEY, PUBLIC_APP_URL, SMTP_URL
 docker compose -f docker-compose.prod.yml up -d --build
 ```
-Put a TLS-terminating proxy in front of `web` (port 3000) and MinIO (`S3_PUBLIC_ENDPOINT`).
+Put a TLS-terminating proxy in front of `web` (port 3000).
+
+The Owner account from the test organization:
+Email: owner-munottnvqye@e2e.test
+Password: correct-horse-battery-staple

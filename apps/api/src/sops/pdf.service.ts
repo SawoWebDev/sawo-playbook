@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { randomUUID, createHash } from 'crypto';
 import QRCode from 'qrcode';
 import { env } from '../config/env';
-import { markReferenced } from '../media/media-lifecycle';
-import { GotenbergService } from '../pdf/gotenberg.service';
+import { BRAND, BRAND_FONT_STACK, brandFontCss } from '../pdf/brand';
+import { PdfRendererService } from '../pdf/pdf-renderer.service';
+import { SAWO_LOGO_DATA_URI } from '../pdf/sawo-logo';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { escapeHtml } from './sanitize';
@@ -11,9 +11,7 @@ import { versionLabel } from './sop-status';
 import { DEFAULT_CONFIG, SopsService, VersionConfig } from './sops.service';
 
 /**
- * PDF export via Gotenberg (ADR 0001). A PUBLISHED version has exactly one
- * canonical PDF (SOPVersion.pdf_asset_id, Invariant #6) rendered once and
- * reused; unpublished versions are rendered on demand and never stored.
+ * SOP document laid out as printable HTML and rendered to PDF by the in-process headless Chromium.
  */
 @Injectable()
 export class PdfService {
@@ -21,47 +19,17 @@ export class PdfService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly sops: SopsService,
-    private readonly gotenberg: GotenbergService,
+    private readonly renderer: PdfRendererService,
   ) {}
 
-  async pdfForVersion(organizationId: string, versionId: string): Promise<{ bytes: Buffer; filename: string }> {
-    const v = await this.sops.loadVersionForRender(organizationId, versionId);
-    const sop = await this.prisma.sop.findFirstOrThrow({ where: { id: v.sopId, organizationId } });
-    const filename = `${sop.referenceNo}-v${versionLabel(v.versionSequence)}.pdf`.replace(/[^\w.\-]+/g, '_');
-
-    if (v.lifecycleState === 'PUBLISHED' && v.pdfAssetId) {
-      const asset = await this.prisma.mediaAsset.findUniqueOrThrow({ where: { id: v.pdfAssetId } });
-      return { bytes: await this.storage.get(asset.storageKey), filename };
-    }
-
-    const bytes = await this.gotenberg.htmlToPdf(await this.buildHtml(organizationId, sop, v));
-    if (v.lifecycleState === 'PUBLISHED') await this.storeCanonical(organizationId, v.id, sop.createdById, bytes, filename);
-    return { bytes, filename };
+  async pdfForVersion(organizationId: string, versionId: string): Promise<Buffer> {
+    return this.renderer.htmlToPdf(await this.printableHtml(organizationId, versionId));
   }
 
-  private async storeCanonical(organizationId: string, versionId: string, createdById: string, bytes: Buffer, filename: string) {
-    const id = randomUUID();
-    const storageKey = `org/${organizationId}/pdf/${versionId}/${id}.pdf`;
-    await this.storage.put(storageKey, bytes, 'application/pdf');
-    await this.prisma.$transaction(async (tx) => {
-      await tx.mediaAsset.create({
-        data: {
-          id,
-          organizationId,
-          type: 'pdf',
-          storageKey,
-          originalFilename: filename,
-          mimeType: 'application/pdf',
-          sizeBytes: BigInt(bytes.length),
-          checksum: createHash('sha256').update(bytes).digest('hex'),
-          createdById,
-        },
-      });
-      // Only the first renderer wins; the DB trigger forbids replacing a canonical PDF.
-      const claimed = await tx.sopVersion.updateMany({ where: { id: versionId, pdfAssetId: null }, data: { pdfAssetId: id } });
-      if (claimed.count === 1) await markReferenced(tx, [id]);
-      else await tx.mediaAsset.update({ where: { id }, data: { lifecycleState: 'orphaned', orphanedAt: new Date() } });
-    });
+  async printableHtml(organizationId: string, versionId: string): Promise<string> {
+    const v = await this.sops.loadVersionForRender(organizationId, versionId);
+    const sop = await this.prisma.sop.findFirstOrThrow({ where: { id: v.sopId, organizationId } });
+    return this.buildHtml(organizationId, sop, v);
   }
 
   private async dataUri(storageKey: string, mime: string): Promise<string> {
@@ -70,93 +38,107 @@ export class PdfService {
 
   private async buildHtml(
     organizationId: string,
-    sop: { name: string; referenceNo: string; qrPublicToken: string },
+    sop: { name: string; referenceNo: string; qrPublicToken: string; createdById: string },
     v: Awaited<ReturnType<SopsService['loadVersionForRender']>>,
   ): Promise<string> {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+    const author = await this.prisma.user.findUnique({ where: { id: sop.createdById }, select: { name: true } });
     const config: VersionConfig = { ...DEFAULT_CONFIG, ...(v.config as Partial<VersionConfig>) };
-    const qr = await QRCode.toDataURL(`${env.publicAppUrl}/s/${sop.qrPublicToken}`, { margin: 1, width: 180 });
-    const cycle = v.steps.reduce((s, x) => s + x.plannedTimeSeconds, 0);
-    const status = v.lifecycleState === 'PUBLISHED' ? '' : `<div class="watermark">${escapeHtml(v.lifecycleState)}</div>`;
-    const fmtTime = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`);
-    const dateStr = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : '—');
+    const qr = await QRCode.toDataURL(`${env.publicAppUrl}/s/${sop.qrPublicToken}`, { margin: 0, width: 200 });
+    const cycle = v.steps.reduce((sum, x) => sum + x.plannedTimeSeconds, 0);
+    const clock = (t: number) =>
+      [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60].map((n) => String(n).padStart(2, '0')).join(':');
+    const dateStr = (d: Date | null) => (d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCFullYear()).slice(2)}` : '—');
+    const watermark = v.lifecycleState === 'PUBLISHED' ? '' : `<div class="watermark">${escapeHtml(v.lifecycleState)}</div>`;
 
-    const stepsHtml: string[] = [];
-    for (const s of v.steps) {
+    const perPage = Math.min(12, Math.max(1, config.steps_per_page || 6));
+    const rows = Math.ceil(perPage / 3);
+    const pages: (typeof v.steps)[] = [];
+    for (let i = 0; i < v.steps.length; i += perPage) pages.push(v.steps.slice(i, i + perPage));
+    if (pages.length === 0) pages.push([]);
+
+    const card = async (s: (typeof v.steps)[number]): Promise<string> => {
       const imgs: string[] = [];
-      for (const m of s.media) {
-        if (m.mediaAsset.type === 'image') imgs.push(`<img src="${await this.dataUri(m.mediaAsset.storageKey, m.mediaAsset.mimeType)}" alt="">`);
+      if (!s.isTextOnly) {
+        for (const m of s.media) {
+          if (m.mediaAsset.type === 'image') imgs.push(`<img src="${await this.dataUri(m.mediaAsset.storageKey, m.mediaAsset.mimeType)}" alt="">`);
+        }
       }
-      stepsHtml.push(`
-        <section class="step ${s.isCritical ? 'critical' : ''}">
-          <div class="step-head">
-            <span class="num">${s.order}</span>
-            <span class="title">${escapeHtml(s.title ?? '')}</span>
-            ${s.isCritical ? '<span class="tag">CRITICAL</span>' : ''}
-            <span class="time">${fmtTime(s.plannedTimeSeconds)}</span>
-          </div>
-          <div class="desc">${s.description}</div>
-          ${s.linkedSop ? `<div class="link">See SOP: ${escapeHtml(s.linkedSop.referenceNo)} — ${escapeHtml(s.linkedSop.name)}</div>` : ''}
-          ${imgs.length ? `<div class="imgs">${imgs.join('')}</div>` : ''}
-        </section>`);
+      const text = s.description.replace(/<[^>]*>/g, '').trim();
+      const long = text.length > 110;
+      const last = s === v.steps[v.steps.length - 1];
+      return `<div class="card">
+        <div class="media${imgs.length ? '' : ' empty'}">${imgs.join('')}</div>
+        <span class="num">${s.order}</span>
+        <span class="time">${clock(s.plannedTimeSeconds)}</span>${last ? `<span class="time total">${clock(cycle)}</span>` : ''}
+        <div class="desc${long ? ' small' : ''}">${s.title ? `<b>${escapeHtml(s.title)}</b> ` : ''}${s.description}</div>
+      </div>`;
+    };
+
+    const label = versionLabel(v.versionSequence);
+    const body: string[] = [];
+    if (config.cover_sheet) {
+      body.push(`<section class="page cover">
+        <div class="org">${escapeHtml(org.name)}</div>
+        <h1>${escapeHtml(sop.name)}</h1>
+        <p>Reference ${escapeHtml(sop.referenceNo)} · Revision ${label}</p>
+        <img class="qr-big" src="${qr}" alt="QR">
+      </section>`);
+    }
+    for (let p = 0; p < pages.length; p++) {
+      const cards: string[] = [];
+      for (const s of pages[p]) cards.push(await card(s));
+      body.push(`<section class="page">
+        <header>
+          <h1>${escapeHtml(sop.name)}</h1>
+          <div class="scan"><img class="logo" src="${SAWO_LOGO_DATA_URI}" alt="SAWO"><div><small>Scan To Edit</small><img src="${qr}" alt="QR"></div></div>
+        </header>
+        <div class="grid">${cards.join('')}</div>
+        <footer>
+          <span><b>Revision:</b> ${label} (${dateStr(v.publishedAt)})</span>
+          <span><b>Process Ref. No:</b> ${escapeHtml(sop.referenceNo)}</span>
+          <span><b>Page ${p + 1} of ${pages.length}</b></span>
+          <span><b>Cycle Time:</b> ${clock(cycle)}</span>
+          <span><b>Author:</b> ${escapeHtml(author?.name ?? '—')}</span>
+        </footer>
+      </section>`);
     }
 
-    const cover = config.cover_sheet
-      ? `<section class="cover">
-          <div class="org">${escapeHtml(org.name)}</div>
-          <h1>${escapeHtml(sop.name)}</h1>
-          <table class="meta">
-            <tr><th>Reference</th><td>${escapeHtml(sop.referenceNo)}</td></tr>
-            <tr><th>Version</th><td>${versionLabel(v.versionSequence)}</td></tr>
-            <tr><th>Published</th><td>${dateStr(v.publishedAt)}</td></tr>
-            <tr><th>Steps</th><td>${v.steps.length}</td></tr>
-            <tr><th>Cycle time</th><td>${fmtTime(cycle)}</td></tr>
-            ${v.changeSummary ? `<tr><th>Changes</th><td>${escapeHtml(v.changeSummary)}</td></tr>` : ''}
-          </table>
-          <img class="qr-big" src="${qr}" alt="QR">
-        </section>`
-      : '';
-
     // Everything interpolated above is either escaped or already-sanitised rich text (§7.8).
+    const orient = config.pdf_orientation === 'Portrait' ? 'portrait' : 'landscape';
     return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(sop.name)}</title>
 <style>
-  @page { size: A4; margin: 14mm 12mm; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #1c2430; }
-  header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1f5fbf; padding-bottom: 6px; margin-bottom: 12px; }
-  header h1 { font-size: 16pt; margin: 0; }
-  header .sub { color: #5d6878; font-size: 9pt; }
-  header img { width: 70px; height: 70px; }
-  .cover { page-break-after: always; text-align: center; padding-top: 40mm; }
-  .cover .org { color: #5d6878; font-size: 12pt; }
-  .cover h1 { font-size: 26pt; margin: 8mm 0; }
-  .cover .meta { margin: 0 auto; border-collapse: collapse; text-align: left; }
-  .cover .meta th, .cover .meta td { padding: 4px 12px; border-bottom: 1px solid #dde1e7; }
-  .qr-big { width: 45mm; height: 45mm; margin-top: 12mm; }
-  .step { border: 1px solid #dde1e7; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid; }
-  .step.critical { border-color: #b42318; border-width: 2px; }
-  .step-head { display: flex; gap: 8px; align-items: center; font-weight: bold; }
-  .num { background: #1f5fbf; color: #fff; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 10pt; }
-  .step.critical .num { background: #b42318; }
-  .title { flex: 1; }
-  .tag { color: #b42318; font-size: 8pt; border: 1px solid #b42318; border-radius: 3px; padding: 0 4px; }
-  .time { color: #5d6878; font-weight: normal; font-size: 9pt; }
-  .desc { margin-top: 4px; }
-  .desc p { margin: 2px 0; }
-  .link { font-size: 9pt; color: #1f5fbf; margin-top: 4px; }
-  .imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .imgs img { max-width: 48%; max-height: 70mm; object-fit: contain; border: 1px solid #eee; }
-  .footer { margin-top: 12px; font-size: 9pt; color: #5d6878; }
-  .watermark { position: fixed; top: 40%; left: 10%; font-size: 72pt; color: rgba(180,35,24,.12); transform: rotate(-30deg); }
+  ${brandFontCss()}
+  @page { size: A4 ${orient}; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ${BRAND_FONT_STACK}; color: ${BRAND.text}; }
+  .page { position: relative; width: ${orient === 'portrait' ? '210mm' : '297mm'}; height: ${orient === 'portrait' ? '297mm' : '210mm'}; padding: 10mm 12mm 8mm; page-break-after: always; display: flex; flex-direction: column; overflow: hidden; }
+  header { display: flex; justify-content: center; align-items: center; position: relative; height: 22mm; }
+  header h1 { font-size: 16pt; margin: 0; text-align: center; }
+  .scan { position: absolute; right: 0; top: 0; display: flex; gap: 3mm; align-items: flex-end; }
+  .scan small { display: block; font-size: 7pt; text-align: right; }
+  .scan img { width: 14mm; height: 14mm; }
+  .logo { height: 14mm; width: auto; }
+  .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(${rows}, 1fr); gap: 4mm; margin-top: 2mm; }
+  .card { position: relative; background: ${BRAND.tint}; border-radius: 4px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .media { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: stretch; gap: 1mm; padding: 2mm 0; }
+  .media img { max-width: 100%; min-width: 0; flex: 0 1 auto; object-fit: contain; height: 100%; background: #fff; }
+  .num { position: absolute; top: 0; left: 0; width: 9mm; height: 9mm; border-radius: 4px; background: ${BRAND.header}; color: #fff; font-size: 13pt; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+  .num.crit { background: ${BRAND.accent}; }
+  .time { position: absolute; top: 2.5mm; left: 11mm; background: #111; color: #fff; border-radius: 3px; font-size: 6.5pt; padding: 0 1.5mm; line-height: 4mm; }
+  .time.total { left: 30mm; background: ${BRAND.button}; color: #fff; }
+  .desc { background: #fff; padding: 1.5mm 0 0; font-size: 11pt; line-height: 1.2; }
+  .desc.small { font-size: 8pt; }
+  .desc p { margin: 0; }
+  footer { display: flex; justify-content: space-between; font-size: 6.5pt; padding-top: 3mm; }
+  .cover { align-items: center; justify-content: center; text-align: center; }
+  .cover h1 { font-size: 26pt; }
+  .qr-big { width: 45mm; height: 45mm; }
+  .watermark { position: fixed; top: 40%; left: 25%; font-size: 72pt; color: rgba(180,35,24,.12); transform: rotate(-20deg); z-index: 5; }
 </style></head><body>
-${status}
-${cover}
-<header>
-  <div><h1>${escapeHtml(sop.name)}</h1>
-  <div class="sub">${escapeHtml(org.name)} · ${escapeHtml(sop.referenceNo)} · Version ${versionLabel(v.versionSequence)} · ${v.lifecycleState === 'PUBLISHED' ? `Published ${dateStr(v.publishedAt)}` : escapeHtml(v.lifecycleState)} · Cycle time ${fmtTime(cycle)}</div></div>
-  <img src="${qr}" alt="QR">
-</header>
-${stepsHtml.join('\n')}
-<div class="footer">Uncontrolled when printed. Scan the QR code for the current version.</div>
+${watermark}
+${body.join('\n')}
+<script>window.onload = () => window.print();</script>
 </body></html>`;
   }
 }

@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import { AdvancedOptions } from '@/components/AdvancedOptions';
 import { SopStatusBadge, VersionStateBadge } from '@/components/StatusBadge';
 import { StepsView } from '@/components/StepsView';
+import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate, fmtDateTime, fmtDuration, plural } from '@/lib/format';
@@ -31,13 +33,19 @@ function SopDetailView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
+  const [approvalRequired, setApprovalRequired] = useState(false);
+  const [more, setMore] = useState(false);
 
   const selected = search.get('v');
 
   const load = useCallback(async () => {
     try {
-      const s = await api<SopDetail>(`/sops/${id}`);
+      const [s, org] = await Promise.all([
+        api<SopDetail>(`/sops/${id}`),
+        api<{ settings: { approvalRequired: boolean } }>('/organization'),
+      ]);
       setSop(s);
+      setApprovalRequired(org.settings.approvalRequired);
       const vid = selected ?? s.activeVersionId ?? s.currentPublishedVersionId ?? s.versions[0]?.id;
       if (vid) {
         const [v, ap] = await Promise.all([
@@ -72,12 +80,12 @@ function SopDetailView() {
     }
   }
 
-  async function openPdf() {
+  async function openPrint() {
     if (!version) return;
     setBusy(true);
     try {
-      const res = await apiRaw(`/sops/${id}/versions/${version.id}/pdf`);
-      if (!res.ok) throw new Error(`PDF export failed (${res.status})`);
+      const res = await apiRaw(`/sops/${id}/versions/${version.id}/print`);
+      if (!res.ok) throw new Error(`Print view failed (${res.status})`);
       const url = URL.createObjectURL(await res.blob());
       window.open(url, '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -102,25 +110,117 @@ function SopDetailView() {
     !!approvals && approvals.decisions.some((d) => d.round === approvals.currentApprovalRound && d.approver.id === user?.id);
   const lastRejection =
     v?.lifecycleState === 'DRAFT' ? approvals?.decisions.find((d) => d.decision === 'rejected' && d.round === approvals.currentApprovalRound) : undefined;
+  const hasActions =
+    !!v &&
+    ((allowed(role, 'editSops') && ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(v.lifecycleState)) ||
+      (canApprove && v.lifecycleState === 'PENDING_APPROVAL') ||
+      (canPublish && v.lifecycleState === 'APPROVED') ||
+      (v.lifecycleState === 'PUBLISHED' && v.id === sop.currentPublishedVersionId && v.config.checklist_sop));
   const qrLink = typeof window !== 'undefined' ? `${window.location.origin}/s/${sop.qrPublicToken}` : '';
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 4 }}>
-        <Link href="/sops" className="muted">
-          ← STD OPS
+      <SubbarLeft>
+        <Link href="/sops" className="back">
+          ‹ <span>Back</span>
         </Link>
-      </div>
-      <div className="row" style={{ marginBottom: 12 }}>
-        <div>
-          <div className="muted" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
-            {sop.referenceNo} · {sop.type === 'advanced' ? 'Advanced SOP' : 'Standard SOP'}
-          </div>
-          <h1 style={{ margin: 0 }}>{sop.name}</h1>
+        <strong className="bar-title">{sop.name}</strong>
+      </SubbarLeft>
+      <SubbarRight>
+        {v && canEdit && v.lifecycleState === 'DRAFT' && (
+          <Link className="btn btn-blue" href={`/sops/${id}/edit/${v.id}`}>
+            {Icons.pencil} Edit draft
+          </Link>
+        )}
+        {v && canEdit && v.lifecycleState === 'PUBLISHED' && !sop.activeVersionId && (
+          <button
+            className="btn btn-blue"
+            disabled={busy}
+            onClick={() =>
+              act(async () => {
+                const nv = await api<VersionDetail>(`/sops/${id}/versions`, { method: 'POST' });
+                router.push(`/sops/${id}/edit/${nv.id}`);
+              }, 'New draft version created.')
+            }
+          >
+            {Icons.pencil} Edit
+          </button>
+        )}
+        {v && canEdit && sop.activeVersionId && v.id !== sop.activeVersionId && (
+          <Link className="btn btn-blue" href={`/sops/${id}/edit/${sop.activeVersionId}`}>
+            {Icons.pencil} Continue editing draft
+          </Link>
+        )}
+        <div className="menu">
+          <button className="kebab" aria-label="More options" aria-expanded={more} onClick={() => setMore((o) => !o)}>
+            ⋮
+          </button>
+          {more && (
+            <div className="menu-list more-menu" onMouseLeave={() => setMore(false)}>
+              <div className="more-title">Versions</div>
+              {sop.versions.map((sv) => (
+                <Link key={sv.id} href={`/sops/${id}?v=${sv.id}`} className="more-version" onClick={() => setMore(false)}>
+                  <span style={{ fontWeight: sv.id === v?.id ? 700 : 400 }}>v{sv.label}</span> <VersionStateBadge state={sv.lifecycleState} />
+                  {sv.id === sop.currentPublishedVersionId && <span className="badge badge-green">current</span>}
+                  <span className="muted"> · {fmtDate(sv.publishedAt ?? sv.createdAt)}</span>
+                </Link>
+              ))}
+              <div className="more-title">Details</div>
+              <dl className="kv more-kv">
+                <dt>Folder</dt>
+                <dd>{sop.folder?.name ?? '—'}</dd>
+                <dt>Date raised</dt>
+                <dd>{fmtDate(sop.createdAt)}</dd>
+                <dt>Created by</dt>
+                <dd>{sop.createdBy?.name ?? '—'}</dd>
+                <dt>Last modified</dt>
+                <dd>{fmtDate(sop.updatedAt)}</dd>
+              </dl>
+              {allowed(role, 'editSops') && (
+                <button
+                  onClick={() => {
+                    setMore(false);
+                    void act(() => api(`/sops/${id}/archive`, { method: 'POST', body: { archived: !sop.archivedAt } }), sop.archivedAt ? 'SOP restored.' : 'SOP archived.');
+                  }}
+                >
+                  {sop.archivedAt ? 'Unarchive' : 'Archive'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <div className="spacer" />
-        <SopStatusBadge status={sop.status} approvals={approvals?.approvedInCurrentRound} quorum={approvals?.quorum} />
+      </SubbarRight>
+
+      <div className="layout-2">
+        <div>
+      <div className="info-card">
+        <div>
+          <div className="info-label">Procedure Name</div>
+          <div className="info-value">{sop.name}</div>
+        </div>
+        <div>
+          <div className="info-label">Created By</div>
+          <div className="info-value">{sop.createdBy?.name ?? 'N/A'}</div>
+        </div>
       </div>
+
+      {v && (
+        <>
+          <h3 className="sec-title">SOP Configuration</h3>
+          <div className="cfg-row">
+            <div className="cfg">
+              <div className="cfg-name">Checklist SOP</div>
+              <div className="cfg-desc">Capture data while operators complete the SOP.</div>
+              <span className={v.config.checklist_sop ? 'pill pill-on' : 'pill'}>● {v.config.checklist_sop ? 'On' : 'Off'}</span>
+            </div>
+            <div className="cfg">
+              <div className="cfg-name">Cover Sheet</div>
+              <div className="cfg-desc">Include a cover sheet as the first page of the SOP.</div>
+              <span className={v.config.cover_sheet ? 'pill pill-on' : 'pill'}>● {v.config.cover_sheet ? 'On' : 'Off'}</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {error && <div className="error">{error}</div>}
       {notice && <div className="success">{notice}</div>}
@@ -130,53 +230,33 @@ function SopDetailView() {
         </div>
       )}
 
-      <div className="layout-2">
-        <div>
           {v && (
             <>
-              <div className="row" style={{ marginBottom: 12 }}>
-                <strong>Version {v.label}</strong>
-                <VersionStateBadge state={v.lifecycleState} />
-                <span className="badge">{plural(v.steps.length, 'step')}</span>
-                <span className="badge">Cycle time {fmtDuration(v.cycleTimeSeconds)}</span>
-                {v.publishedAt && <span className="muted">Published {fmtDate(v.publishedAt)}{v.publishedBy ? ` by ${v.publishedBy.name}` : ''}</span>}
-              </div>
-              {v.changeSummary && <p className="muted">Changes: {v.changeSummary}</p>}
+              <AdvancedOptions
+                config={v.config}
+                referenceNo={sop.referenceNo}
+                raisedAt={sop.createdAt}
+                revision={v.label}
+                revisionDate={v.publishedAt ?? v.createdAt}
+                cycleTimeSeconds={v.cycleTimeSeconds}
+              />
+              <h3 className="view-steps">View steps</h3>
               <StepsView steps={v.steps} showTitles={sop.type === 'advanced'} />
             </>
           )}
         </div>
 
         <aside className="panel">
-          {v && (
+          {v && hasActions && (
             <div className="card">
               <h3>Actions</h3>
               <div className="panel">
-                {canEdit && v.lifecycleState === 'DRAFT' && (
-                  <Link className="btn btn-primary" href={`/sops/${id}/edit/${v.id}`}>
-                    Edit draft
-                  </Link>
-                )}
-                {canEdit && v.lifecycleState === 'PUBLISHED' && !sop.activeVersionId && (
-                  <button
-                    className="btn btn-primary"
-                    disabled={busy}
-                    onClick={() =>
-                      act(async () => {
-                        const nv = await api<VersionDetail>(`/sops/${id}/versions`, { method: 'POST' });
-                        router.push(`/sops/${id}/edit/${nv.id}`);
-                      }, 'New draft version created.')
-                    }
-                  >
-                    Edit (new version)
+                {allowed(role, 'editSops') && v.lifecycleState === 'DRAFT' && !approvalRequired && (
+                  <button className="btn" disabled={busy || v.steps.length === 0} onClick={() => act(() => api(`${vUrl}/finish`, { method: 'POST', body: {} }), 'Version published.')}>
+                    Publish
                   </button>
                 )}
-                {canEdit && sop.activeVersionId && v.id !== sop.activeVersionId && (
-                  <Link className="btn" href={`/sops/${id}?v=${sop.activeVersionId}`}>
-                    Go to version in progress
-                  </Link>
-                )}
-                {allowed(role, 'editSops') && v.lifecycleState === 'DRAFT' && (
+                {allowed(role, 'editSops') && v.lifecycleState === 'DRAFT' && approvalRequired && (
                   <button className="btn" disabled={busy || v.steps.length === 0} onClick={() => act(() => api(`${vUrl}/submit`, { method: 'POST', body: {} }), 'Submitted for approval.')}>
                     Submit for approval
                   </button>
@@ -217,7 +297,7 @@ function SopDetailView() {
                       }
                     }}
                   >
-                    Discard version
+                    Discard draft
                   </button>
                 )}
                 {v.lifecycleState === 'PUBLISHED' && v.id === sop.currentPublishedVersionId && v.config.checklist_sop && (
@@ -234,9 +314,6 @@ function SopDetailView() {
                     Start checklist
                   </button>
                 )}
-                <button className="btn" disabled={busy} onClick={openPdf}>
-                  View / Print PDF
-                </button>
               </div>
             </div>
           )}
@@ -266,77 +343,57 @@ function SopDetailView() {
             </div>
           )}
 
-          <div className="card">
-            <h3>Share</h3>
-            {sop.currentPublishedVersionId ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/api/qr/${sop.qrPublicToken}/image.png`} alt="QR code" style={{ width: 160, height: 160 }} />
-                <p className="muted" style={{ fontSize: 12, wordBreak: 'break-all' }}>
-                  The QR always opens the current published version.
-                  <br />
-                  {qrLink}
-                </p>
-                <div className="row">
-                  <button className="btn btn-sm" onClick={() => navigator.clipboard?.writeText(qrLink).then(() => setNotice('Link copied.'))}>
-                    Copy link
+          {v && (
+            <div className="opt-card">
+              <div className="opt-head">View or Print Options</div>
+              <div className="opt-body">
+                <button className="opt-btn" disabled={busy} onClick={openPrint}>
+                  View or Print PDF
+                </button>
+                <Link className="opt-btn" href={`/kiosk/${id}`}>
+                  View Step By Step
+                </Link>
+                {sop.currentPublishedVersionId ? (
+                  <>
+                    <a className="opt-btn" href={`/print/qr/${id}`} target="_blank" rel="noreferrer">
+                      View or Print QR Code
+                    </a>
+                    <a className="opt-btn outline" href={`/print/qr/${id}`} target="_blank" rel="noreferrer">
+                      View or Print Green/Red Code PDF
+                    </a>
+                  </>
+                ) : (
+                  <p className="muted" style={{ fontSize: 12, margin: 0 }}>Publish a version to print its QR code.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {sop.currentPublishedVersionId && (
+            <>
+              <div className="opt-card">
+                <div className="opt-head">Share Options</div>
+                <div className="opt-body">
+                  <button className="opt-btn" onClick={() => navigator.clipboard?.writeText(qrLink).then(() => setNotice('Link copied.'))}>
+                    Share PDF / Link
                   </button>
-                  <a className="btn btn-sm" href={`/api/qr/${sop.qrPublicToken}/image.png`} download={`${sop.referenceNo}-qr.png`}>
-                    Download QR
+                  <a className="opt-btn outline" href={`/api/qr/${sop.qrPublicToken}/image.png`} download={`${sop.referenceNo}-qr.png`}>
+                    Share QR Code
                   </a>
-                  <a className="btn btn-sm" href={`/print/qr/${id}`} target="_blank" rel="noreferrer">
-                    Print labels
-                  </a>
-                  <a className="btn btn-sm" href={`/kiosk/${id}`}>
-                    Kiosk mode
-                  </a>
+                  <button
+                    className="opt-btn outline"
+                    onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/sops/${id}`).then(() => setNotice('Link copied.'))}
+                  >
+                    Share Link to View SOP in App
+                  </button>
                 </div>
-              </>
-            ) : (
-              <p className="muted">Publish a version to share it by QR code.</p>
-            )}
-          </div>
-
-          <div className="card">
-            <h3>Versions</h3>
-            <ul style={{ paddingLeft: 0, listStyle: 'none', margin: 0 }}>
-              {sop.versions.map((sv) => (
-                <li key={sv.id} style={{ marginBottom: 6 }}>
-                  <Link href={`/sops/${id}?v=${sv.id}`} style={{ fontWeight: sv.id === v?.id ? 700 : 400 }}>
-                    v{sv.label}
-                  </Link>{' '}
-                  <VersionStateBadge state={sv.lifecycleState} />
-                  {sv.id === sop.currentPublishedVersionId && <span className="badge badge-green">current</span>}
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {fmtDate(sv.publishedAt ?? sv.createdAt)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="card">
-            <h3>Details</h3>
-            <dl className="kv">
-              <dt>Folder</dt>
-              <dd>{sop.folder?.name ?? '—'}</dd>
-              <dt>Date raised</dt>
-              <dd>{fmtDate(sop.createdAt)}</dd>
-              <dt>Created by</dt>
-              <dd>{sop.createdBy?.name ?? '—'}</dd>
-              <dt>Last modified</dt>
-              <dd>{fmtDate(sop.updatedAt)}</dd>
-            </dl>
-            {allowed(role, 'editSops') && (
-              <button
-                className="btn btn-sm"
-                style={{ marginTop: 10 }}
-                onClick={() => act(() => api(`/sops/${id}/archive`, { method: 'POST', body: { archived: !sop.archivedAt } }), sop.archivedAt ? 'SOP restored.' : 'SOP archived.')}
-              >
-                {sop.archivedAt ? 'Unarchive' : 'Archive'}
+              </div>
+              <button className="regen" onClick={() => void load()}>
+                Issue with PDF/QR Code? Click to regenerate
               </button>
-            )}
-          </div>
+            </>
+          )}
+
         </aside>
       </div>
     </>

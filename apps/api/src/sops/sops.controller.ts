@@ -161,18 +161,33 @@ export class SopsController {
     return this.workflow.publish(actor, id, vid, meta);
   }
 
-  @Get(':id/versions/:vid/pdf')
+  /** Save-and-publish without approval (only when the organization does not require approval). */
+  @Post(':id/versions/:vid/finish')
+  @HttpCode(200)
+  @RequirePermission(Permission.SopEdit)
+  @TrackActivity({ event: 'sop.version.published', entity: 'sop', id: 'param:id', params: ['vid'] })
+  finish(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('vid', ParseUUIDPipe) vid: string,
+    @Body() dto: SubmitDto,
+    @ReqMeta() meta: RequestMeta,
+  ) {
+    return this.workflow.finish(actor, id, vid, dto.changeSummary, meta);
+  }
+
+  @Get(':id/versions/:vid/print')
   @RequirePermission(Permission.ShareExport)
   @TrackActivity({ event: 'sop.exported', entity: 'sop', id: 'param:id', params: ['vid'] })
-  async pdfExport(
+  async printExport(
     @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('vid', ParseUUIDPipe) vid: string,
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.sops.getVersion(actor, id, vid); // tenant + visibility check
-    const { bytes, filename } = await this.pdf.pdfForVersion(actor.organizationId, vid);
-    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${filename}"` });
+    const bytes = await this.pdf.pdfForVersion(actor.organizationId, vid);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="sop.pdf"' });
     return new StreamableFile(bytes);
   }
 }

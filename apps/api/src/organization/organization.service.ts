@@ -28,6 +28,7 @@ export class OrganizationService {
       status: org.status,
       deletionScheduledFor: org.deletionScheduledFor,
       settings: org.settings && {
+        approvalRequired: org.settings.approvalRequired,
         approvalQuorum: org.settings.approvalQuorum,
         allowSelfApproval: org.settings.allowSelfApproval,
         publicSopViewing: org.settings.publicSopViewing,
@@ -48,8 +49,8 @@ export class OrganizationService {
           entityType: 'organization_settings',
           entityId: actor.organizationId,
           metadata: {
-            before: { approvalQuorum: before.approvalQuorum, allowSelfApproval: before.allowSelfApproval, publicSopViewing: before.publicSopViewing },
-            after: { approvalQuorum: after.approvalQuorum, allowSelfApproval: after.allowSelfApproval, publicSopViewing: after.publicSopViewing },
+            before: { approvalRequired: before.approvalRequired, approvalQuorum: before.approvalQuorum, allowSelfApproval: before.allowSelfApproval, publicSopViewing: before.publicSopViewing },
+            after: { approvalRequired: after.approvalRequired, approvalQuorum: after.approvalQuorum, allowSelfApproval: after.allowSelfApproval, publicSopViewing: after.publicSopViewing },
           },
           ...meta,
         },

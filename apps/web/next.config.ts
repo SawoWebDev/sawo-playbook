@@ -1,13 +1,10 @@
 import type { NextConfig } from 'next';
 
 const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
-// Origin serving signed media URLs (MinIO/S3 public endpoint). Set at build time.
-const mediaOrigin = process.env.MEDIA_ORIGIN ?? 'https:';
-
 const csp = [
   "default-src 'self'",
-  `img-src 'self' data: blob: ${mediaOrigin}`,
-  `media-src 'self' blob: ${mediaOrigin}`,
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
   // Next.js App Router injects inline bootstrap scripts; nonce-based CSP is a later hardening step.
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
@@ -22,6 +19,7 @@ const csp = [
 const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
+  devIndicators: false,
   // Single origin for the browser: /api/* is proxied to the API container,
   // so the SameSite=Strict refresh cookie works without CSRF tokens (§7.4).
   async rewrites() {

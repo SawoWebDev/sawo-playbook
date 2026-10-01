@@ -28,7 +28,7 @@ export async function signup(page: Page, org: string, name: string, mail: string
   await page.getByLabel('Email').fill(mail);
   await page.getByLabel('Password (min. 10 characters)').fill(PASSWORD);
   await page.getByRole('button', { name: 'Create organization' }).click();
-  await expect(page.getByRole('heading', { name: `Welcome, ${name}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^STD OPS/ })).toBeVisible();
 }
 
 export async function login(page: Page, mail: string, password = PASSWORD) {
@@ -39,6 +39,7 @@ export async function login(page: Page, mail: string, password = PASSWORD) {
 }
 
 export async function logout(page: Page) {
+  await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/login/);
 }
@@ -63,7 +64,7 @@ export async function acceptInvite(page: Page, path: string, name: string) {
   await page.getByLabel('Your name').fill(name);
   await page.getByLabel(/Choose a password/).fill(PASSWORD);
   await page.getByRole('button', { name: 'Accept invitation' }).click();
-  await expect(page.getByRole('heading', { name: `Welcome, ${name}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^STD OPS/ })).toBeVisible();
 }
 
 /** Latest Mailpit message sent to `to`, if any. */

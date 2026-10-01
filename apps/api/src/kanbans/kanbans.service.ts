@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BRAND, BRAND_FONT_STACK, brandFontCss } from '../pdf/brand';
 import { Kanban, KanbanOrderingType, Prisma } from '@prisma/client';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
@@ -6,7 +7,7 @@ import { csvCell, parseCsvWithHeader } from '../common/csv';
 import { RequestMeta } from '../common/decorators';
 import { MediaService } from '../media/media.service';
 import { markAttached, reevaluateMedia } from '../media/media-lifecycle';
-import { GotenbergService } from '../pdf/gotenberg.service';
+import { PdfRendererService } from '../pdf/pdf-renderer.service';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { escapeHtml } from '../sops/sanitize';
@@ -42,7 +43,7 @@ export class KanbansService {
     private readonly media: MediaService,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
-    private readonly gotenberg: GotenbergService,
+    private readonly renderer: PdfRendererService,
   ) {}
 
   // ───────────── queries ─────────────
@@ -75,7 +76,14 @@ export class KanbansService {
       }),
       this.facets(actor.organizationId),
     ]);
-    return { total, facets, items: await Promise.all(rows.map((r) => this.view(r))) };
+    const names = await this.creatorNames(rows.map((r) => r.createdById));
+    return { total, facets, items: await Promise.all(rows.map((r) => this.view(r, names))) };
+  }
+
+  /** Kanban.createdById has no Prisma relation, so creator names are looked up in one query. */
+  private async creatorNames(ids: string[]) {
+    const users = await this.prisma.user.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, name: true } });
+    return new Map(users.map((u) => [u.id, u.name]));
   }
 
   private async facets(organizationId: string) {
@@ -99,13 +107,16 @@ export class KanbansService {
   }
 
   async get(actor: AuthUser, id: string) {
-    return this.view(await this.find(actor, id));
+    const k = await this.find(actor, id);
+    return this.view(k, await this.creatorNames([k.createdById]));
   }
 
-  private async view(k: KanbanFull) {
+  private async view(k: KanbanFull, names?: Map<string, string>) {
     const { picture, media, organizationId: _org, ...rest } = k;
+    const name = names?.get(k.createdById);
     return {
       ...rest,
+      createdBy: name ? { id: k.createdById, name } : null,
       price: k.price === null ? null : Number(k.price),
       carriage: k.carriage === null ? null : Number(k.carriage),
       picture: picture && picture.lifecycleState !== 'purged' ? await this.media.view(picture) : null,
@@ -354,10 +365,11 @@ export class KanbansService {
     const cards: string[] = [];
     for (const k of rows) cards.push(await this.cardHtml(k));
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      ${brandFontCss()}
       @page { size: A4; margin: 10mm; }
-      body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; margin: 0; }
+      body { font-family: ${BRAND_FONT_STACK}; font-size: 10pt; margin: 0; color: ${BRAND.text}; }
       .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
-      .card { border: 2px solid #1c2430; border-radius: 4px; padding: 4mm; page-break-inside: avoid; height: 84mm; box-sizing: border-box; display: flex; flex-direction: column; }
+      .card { border: 2px solid ${BRAND.header}; border-radius: 4px; padding: 4mm; page-break-inside: avoid; height: 84mm; box-sizing: border-box; display: flex; flex-direction: column; }
       .band { height: 6mm; margin: -4mm -4mm 3mm; border-radius: 2px 2px 0 0; }
       .top { display: flex; gap: 4mm; }
       .top img { width: 32mm; height: 32mm; object-fit: contain; border: 1px solid #ccc; }
@@ -366,8 +378,8 @@ export class KanbansService {
       table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 9pt; }
       td { border: 1px solid #bbb; padding: 1mm 2mm; } td:first-child { font-weight: bold; width: 35%; background: #f3f4f6; }
       .barcode { margin-top: auto; font-family: monospace; text-align: center; font-size: 11pt; letter-spacing: 2px; }
-    </style></head><body><div class="sheet">${cards.join('')}</div></body></html>`;
-    return this.gotenberg.htmlToPdf(html);
+    </style></head><body><div class="sheet">${cards.join('')}</div><script>window.onload = () => window.print();</script></body></html>`;
+    return this.renderer.htmlToPdf(html);
   }
 
   private async cardHtml(k: Kanban & { picture: { storageKey: string; mimeType: string; type: string } | null; orderingSop: { referenceNo: string; name: string } | null }) {
@@ -376,7 +388,7 @@ export class KanbansService {
       ? `<img src="data:${k.picture.mimeType};base64,${(await this.storage.get(k.picture.storageKey)).toString('base64')}">`
       : '';
     const order = k.orderingType === 'url' ? e(k.orderingUrl) : k.orderingType === 'email' ? e(k.orderingEmail) : `SOP ${e(k.orderingSop?.referenceNo)} — ${e(k.orderingSop?.name)}`;
-    const color = /^#?[0-9a-f]{3,8}$|^[a-z]{3,20}$/i.test(k.color ?? '') ? (k.color!.match(/^[0-9a-f]+$/i) ? `#${k.color}` : k.color) : '#1f5fbf';
+    const color = /^#?[0-9a-f]{3,8}$|^[a-z]{3,20}$/i.test(k.color ?? '') ? (k.color!.match(/^[0-9a-f]+$/i) ? `#${k.color}` : k.color) : BRAND.button;
     const rows: [string, unknown][] = [
       ['Supplier', k.supplier], ['Supplier part no.', k.supplierPartNo], ['Location', k.location], ['Order when', k.orderWhen],
       ['Order qty', k.orderQty], ['Delivery time', k.deliveryTime], ['Order via', null],

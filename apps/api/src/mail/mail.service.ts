@@ -1,6 +1,5 @@
 import { Global, Injectable, Logger, Module } from '@nestjs/common';
 import nodemailer, { Transporter } from 'nodemailer';
-import { QueueService } from '../jobs/queue.service';
 
 export interface MailMessage {
   to: string;
@@ -9,9 +8,9 @@ export interface MailMessage {
 }
 
 /**
- * Mail delivery. Messages are enqueued on the `mail` BullMQ queue and sent by
- * the worker through SMTP (`SMTP_URL`, e.g. Mailpit in dev). Without a queue
- * (tests) they are recorded in an in-memory outbox and logged.
+ * Mail delivery through SMTP (`SMTP_URL`). Without `SMTP_URL` messages are only
+ * logged (dev) and kept in an in-memory outbox (tests). Delivery is fire-and-forget
+ * so a mail outage never fails the request that triggered it.
  */
 @Injectable()
 export class MailService {
@@ -19,19 +18,14 @@ export class MailService {
   private transporter?: Transporter;
   readonly outbox: MailMessage[] = [];
 
-  constructor(private readonly queues: QueueService) {}
-
   async send(msg: MailMessage): Promise<void> {
     this.outbox.push(msg);
     if (this.outbox.length > 200) this.outbox.shift();
-    if (await this.queues.add('mail', 'send', msg)) return;
-    if (process.env.NODE_ENV !== 'test') {
-      this.logger.log(`(no queue) to=${msg.to} subject="${msg.subject}"\n${msg.text}`);
-    }
+    if (process.env.NODE_ENV === 'test') return;
+    await this.deliver(msg).catch((e: Error) => this.logger.error(`Could not send mail to ${msg.to}: ${e.message}`));
   }
 
-  /** Called by the worker for each queued message. */
-  async deliver(msg: MailMessage): Promise<void> {
+  private async deliver(msg: MailMessage): Promise<void> {
     const url = process.env.SMTP_URL;
     if (!url) {
       this.logger.log(`(no SMTP_URL) to=${msg.to} subject="${msg.subject}"\n${msg.text}`);

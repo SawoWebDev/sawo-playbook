@@ -31,6 +31,8 @@ export interface Kanban {
   template: '01' | '02';
   picture: MediaItem | null;
   media: MediaItem[];
+  createdAt: string;
+  createdBy: { id: string; name: string } | null;
   updatedAt: string;
 }
 
@@ -70,7 +72,7 @@ function initial(k?: Kanban): FormState {
     customField2: s(k?.customField2),
     price: s(k?.price),
     carriage: s(k?.carriage),
-    color: s(k?.color) || '#1f5fbf',
+    color: s(k?.color) || '#b0825e',
     template: k?.template ?? '01',
     orderingType: k?.orderingType ?? 'url',
     orderingUrl: s(k?.orderingUrl),

@@ -7,13 +7,13 @@ test('signup → logout → login; session survives a page reload (refresh cooki
   const mail = email('auth-owner');
   await signup(page, 'Auth Test Co', 'Ava Auth', mail);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Welcome, Ava Auth' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^STD OPS/ })).toBeVisible();
   await logout(page);
   await page.goto('/sops');
   await expect(page).toHaveURL(/\/login/);
 
   await login(page, mail);
-  await expect(page.getByRole('heading', { name: 'Welcome, Ava Auth' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^STD OPS/ })).toBeVisible();
   await context.close();
 });
 
@@ -66,7 +66,7 @@ test('forgot password sends a reset email; reset link sets a new password', asyn
   await login(page, mail, PASSWORD);
   await expect(page.locator('.error')).toHaveText('Invalid credentials');
   await login(page, mail, 'a-brand-new-password-1');
-  await expect(page.getByRole('heading', { name: 'Welcome, Rita Reset' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^STD OPS/ })).toBeVisible();
   await context.close();
 });
 
@@ -79,7 +79,7 @@ test('login ?next= only follows same-origin paths', async ({ browser }) => {
   await page.getByLabel('Email').fill(mail);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Welcome, Nate Next' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^STD OPS/ })).toBeVisible();
   expect(new URL(page.url()).host).not.toContain('evil');
   await context.close();
 });

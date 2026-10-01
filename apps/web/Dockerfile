@@ -17,8 +17,7 @@ COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .
 ARG API_INTERNAL_URL=http://api:4000
-ARG MEDIA_ORIGIN=https:
-ENV API_INTERNAL_URL=$API_INTERNAL_URL MEDIA_ORIGIN=$MEDIA_ORIGIN
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
 RUN npm run build
 
 # ---- prod ----

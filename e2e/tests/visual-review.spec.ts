@@ -35,26 +35,29 @@ test('@review screenshot tour (desktop + mobile)', async ({ browser }) => {
     ['Fit new die', 'Align the locating pins, torque clamp bolts to 120 Nm in a cross pattern.', false],
   ] as const;
   for (const [i, [title, text, critical]] of steps.entries()) {
-    await page.getByRole('button', { name: '+ Add step' }).click();
+    await page.getByRole('button', { name: '+ Add New Step' }).click();
     const s = page.locator('.editor-step').nth(i);
     await s.getByPlaceholder('Step title').fill(title);
     await s.locator('.rte').click();
     await page.keyboard.type(text.replace(/<\/?b>/g, ''));
-    await s.locator('input[type=number]').fill(String(60 * (i + 1)));
-    if (critical) await s.getByLabel('Critical step').check();
-    if (i === 0) await s.locator('input[type=file]').setInputFiles({ name: 'loto.png', mimeType: 'image/png', buffer: PNG });
+    await s.getByPlaceholder('HH:MM:SS').fill('00:0' + (i + 1) + ':00');
+    await s.getByPlaceholder('HH:MM:SS').press('Tab');
+    if (critical) await s.getByLabel('Is this step critical?').check();
+    if (i === 0) await s.locator('input[type=file]').first().setInputFiles({ name: 'loto.png', mimeType: 'image/png', buffer: PNG });
   }
   await shot(page, 'desktop-sop-editor');
-  await page.getByRole('button', { name: 'Save & close' }).click();
-  await expect(page).toHaveURL(/\?v=/);
+  await page.getByRole('button', { name: 'Finish & Save' }).click();
+  await expect(page).toHaveURL(/\/sops\/[0-9a-f-]+$/);
+  await expect(page.locator('.badge', { hasText: 'Published' }).first()).toBeVisible();
   await shot(page, 'desktop-sop-detail');
-  const sopUrl = page.url().split('?')[0].replace(/^https?:\/\/[^/]+/, '');
+  const sopUrl = new URL(page.url()).pathname;
 
   await page.goto('/sops');
   await shot(page, 'desktop-sops-list');
 
   await page.goto('/kanbans');
-  await page.getByRole('button', { name: 'Bulk import' }).click();
+  await page.getByRole('button', { name: '+ Create New' }).click();
+  await page.getByRole('button', { name: 'Bulk import (CSV)' }).click();
   await page
     .getByPlaceholder('…or paste CSV here')
     .fill(

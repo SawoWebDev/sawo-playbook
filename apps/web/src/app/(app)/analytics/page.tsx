@@ -18,7 +18,7 @@ interface Summary {
 
 const SERIES = [
   { key: 'views', label: 'SOP views', color: 'var(--primary)' },
-  { key: 'edits', label: 'Edits', color: '#8250df' },
+  { key: 'edits', label: 'Edits', color: '#a97d53' },
   { key: 'created', label: 'Created', color: 'var(--success)' },
   { key: 'checklists', label: 'Checklists', color: 'var(--warning)' },
 ] as const;

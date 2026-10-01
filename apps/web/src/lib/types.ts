@@ -82,6 +82,22 @@ export interface VersionConfig {
   collaborate: boolean;
   checklist_sop: boolean;
   key_points_enabled: boolean;
+  language: string;
+  pdf_orientation: 'Landscape' | 'Portrait';
+  steps_per_page: number;
+  full_image: boolean;
+  step_by_step_pdf: boolean;
+  border_width: string;
+  header_footer_color: string;
+  header_footer_text_color: 'Black' | 'White';
+  red_card_text: string;
+  red_bg: string;
+  red_text: 'Black' | 'White';
+  green_bg: string;
+  green_text: 'Black' | 'White';
+  is_critical: boolean;
+  video_link: string;
+  total_time_required: string;
 }
 
 export interface VersionDetail {

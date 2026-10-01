@@ -57,7 +57,7 @@ function QrLanding() {
   const v = data.version;
   return (
     <div className="main" style={{ margin: '0 auto' }}>
-      <div className="muted" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
+      <div className="muted" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
         {data.sop.referenceNo}
       </div>
       <h1>{data.sop.name}</h1>

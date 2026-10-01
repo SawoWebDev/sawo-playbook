@@ -14,10 +14,10 @@ import { KanbansModule } from './kanbans/kanbans.module';
 import { MailModule } from './mail/mail.service';
 import { MediaModule } from './media/media.module';
 import { SopsModule } from './sops/sops.module';
-import { StorageModule } from './storage/storage.service';
+import { StorageModule } from './storage/storage.module';
 import { OrganizationModule } from './organization/organization.module';
 import { UsersModule } from './users/users.module';
-import { GotenbergModule } from './pdf/gotenberg.service';
+import { PdfRendererModule } from './pdf/pdf-renderer.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { SkillsModule } from './skills/skills.module';
 
@@ -35,7 +35,7 @@ import { SkillsModule } from './skills/skills.module';
     UsersModule,
     OrganizationModule,
     StorageModule,
-    GotenbergModule,
+    PdfRendererModule,
     MediaModule,
     FoldersModule,
     SopsModule,
