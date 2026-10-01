@@ -53,6 +53,8 @@ export const Icons = {
       <path d="M3 3v5h5M12 7v5l3 2" />
     </>,
   ),
+  upload: icon(<path d="M12 15V3m0 0-4 4m4-4 4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />),
+  download: icon(<path d="M12 3v12m0 0-4-4m4 4 4-4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />),
   trash: icon(<path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3" />),
   eye: icon(
     <>

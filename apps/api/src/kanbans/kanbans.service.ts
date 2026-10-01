@@ -111,6 +111,21 @@ export class KanbansService {
     return this.view(k, await this.creatorNames([k.createdById]));
   }
 
+  /** Change history of one card, newest first, from the activity events recorded for it (create / edit). */
+  async history(actor: AuthUser, id: string) {
+    const k = await this.find(actor, id);
+    const events = await this.prisma.activityEvent.findMany({
+      where: { organizationId: actor.organizationId, entityType: 'kanban', entityId: id, eventType: { in: ['kanban.created', 'kanban.updated'] } },
+      orderBy: { occurredAt: 'desc' },
+      take: 200,
+    });
+    const rows = events.map((e) => ({ id: e.id, action: e.eventType === 'kanban.created' ? 'Created' : 'Edited', actorId: e.actorId, at: e.occurredAt }));
+    // cards created by CSV import have no per-card "created" event: fall back to the card's own record
+    if (!events.some((e) => e.eventType === 'kanban.created')) rows.push({ id: `created-${k.id}`, action: 'Created', actorId: k.createdById, at: k.createdAt });
+    const names = await this.creatorNames(rows.map((r) => r.actorId).filter((x): x is string => !!x));
+    return rows.map(({ actorId, ...r }) => ({ ...r, by: actorId ? (names.get(actorId) ?? null) : null }));
+  }
+
   private async view(k: KanbanFull, names?: Map<string, string>) {
     const { picture, media, organizationId: _org, ...rest } = k;
     const name = names?.get(k.createdById);
@@ -126,13 +141,16 @@ export class KanbansService {
 
   // ───────────── validation ─────────────
 
-  /** §6.7: exactly one ordering target, matching ordering_type — validated before the DB CHECK fires. */
+  /**
+   * §6.7: the ordering target must match ordering_type — validated before the DB CHECK fires. The URL is optional
+   * (a card may have no ordering link yet); SOP and email targets are required for their types.
+   */
   private async ordering(actor: AuthUser, input: Partial<Ordering> & { orderingType?: KanbanOrderingType }): Promise<Ordering> {
     const type = input.orderingType;
     if (!type) throw new BadRequestException('orderingType is required');
     if (type === 'url') {
-      const url = input.orderingUrl?.trim();
-      if (!url || !/^https?:\/\/\S+$/i.test(url)) throw new BadRequestException('A valid http(s) ordering URL is required');
+      const url = input.orderingUrl?.trim() || null;
+      if (url && !/^https?:\/\/\S+$/i.test(url)) throw new BadRequestException('The ordering URL must be a valid http(s) link');
       return { orderingType: type, orderingUrl: url, orderingSopId: null, orderingEmail: null };
     }
     if (type === 'email') {
@@ -258,7 +276,7 @@ export class KanbansService {
     for (const { row, values: v } of rows) {
       try {
         if (!v.part_code) throw new Error('part_code is required');
-        const type = (v.ordering_type || (v.ordering_url ? 'url' : v.ordering_email ? 'email' : v.ordering_sop_ref ? 'sop' : '')).toLowerCase();
+        const type = (v.ordering_type || (v.ordering_url ? 'url' : v.ordering_email ? 'email' : v.ordering_sop_ref ? 'sop' : 'url')).toLowerCase();
         if (!['url', 'sop', 'email'].includes(type)) throw new Error('ordering_type must be url, sop or email');
         let orderingSopId: string | undefined;
         if (type === 'sop') {

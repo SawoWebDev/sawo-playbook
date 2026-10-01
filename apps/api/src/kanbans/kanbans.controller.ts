@@ -61,6 +61,12 @@ export class KanbansController {
     return this.kanbans.get(actor, id);
   }
 
+  @Get(':id/history')
+  @RequirePermission(Permission.SopView)
+  history(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.kanbans.history(actor, id);
+  }
+
   @Patch(':id')
   @RequirePermission(Permission.KanbanEdit)
   @TrackActivity({ event: 'kanban.updated', entity: 'kanban', id: 'param:id' })

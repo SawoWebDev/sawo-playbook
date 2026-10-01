@@ -48,13 +48,25 @@ describe('kanban CRUD', () => {
   });
 
   it('ordering target must match ordering_type (service validation, before the DB CHECK)', async () => {
-    await create(a, { partCode: 'P1', orderingType: 'url' }).expect(400);
+    const noUrl = await create(a, { partCode: 'P0', orderingType: 'url' }).expect(201); // the ordering URL is optional
+    expect(noUrl.body).toMatchObject({ orderingType: 'url', orderingUrl: null });
     await create(a, { partCode: 'P1', orderingType: 'url', orderingUrl: 'javascript:alert(1)' }).expect(400);
     await create(a, { partCode: 'P1', orderingType: 'email', orderingEmail: 'nope' }).expect(400);
     await create(a, { partCode: 'P1', orderingType: 'sop' }).expect(400);
     await create(a, { partCode: 'P1' }).expect(400);
     const ok = await create(a, { partCode: 'P1', orderingType: 'url', orderingUrl: 'https://shop.example.com/p1', orderingEmail: 'ignored@x.co' }).expect(201);
     expect(ok.body.orderingEmail).toBeNull();
+  });
+
+  it('change history lists create and edits, newest first; other tenants get 404', async () => {
+    const k = await create(a, { partCode: 'HIST-1', orderingType: 'url' }).expect(201);
+    await ctx.http().patch(`/api/kanbans/${k.body.id}`).set(as(a, 'ADMIN')).send({ location: 'Rack H1' }).expect(200);
+    // activity events are written after the response; give the interceptor a moment
+    await new Promise((r) => setTimeout(r, 200));
+    const r = await ctx.http().get(`/api/kanbans/${k.body.id}/history`).set(as(a, 'OPERATOR')).expect(200);
+    expect(r.body.map((x: { action: string }) => x.action)).toEqual(['Edited', 'Created']);
+    expect(r.body[1].by).toBeTruthy();
+    await ctx.http().get(`/api/kanbans/${k.body.id}/history`).set(as(b, 'OWNER')).expect(404);
   });
 
   it('switching ordering type clears the previous target', async () => {

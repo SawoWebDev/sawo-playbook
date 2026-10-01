@@ -1,15 +1,16 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { KanbanForm, type Kanban } from '@/components/KanbanForm';
+import { KanbanCardMenu } from '@/components/KanbanCardMenu';
+import type { Kanban } from '@/components/KanbanForm';
 import { Lightbox, type LightboxImage } from '@/components/Lightbox';
 import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate } from '@/lib/format';
 import { allowed } from '@/lib/permissions';
-import type { SopListItem } from '@/lib/types';
 
 interface ListResponse {
   total: number;
@@ -17,7 +18,7 @@ interface ListResponse {
   items: Kanban[];
 }
 
-type Dialog = { kind: 'form'; kanban?: Kanban } | { kind: 'import' } | { kind: 'bulk' } | null;
+type Dialog = { kind: 'import' } | { kind: 'bulk' } | null;
 
 export default function KanbansPage() {
   return (
@@ -30,6 +31,7 @@ export default function KanbansPage() {
 function Kanbans() {
   const initialSearch = useSearchParams().get('search') ?? '';
   const { user } = useAuth();
+  const router = useRouter();
   const canEdit = allowed(user?.role, 'editKanbans');
   const [data, setData] = useState<ListResponse | null>(null);
   const [q, setQ] = useState(() => ({
@@ -42,12 +44,9 @@ function Kanbans() {
   }));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [sops, setSops] = useState<SopListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [popup, setPopup] = useState<LightboxImage | null>(null);
-  const [createMenu, setCreateMenu] = useState(false);
-  const [cardMenu, setCardMenu] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showSort, setShowSort] = useState(false);
 
@@ -65,10 +64,6 @@ function Kanbans() {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
-
-  useEffect(() => {
-    if (canEdit) api<{ items: SopListItem[] }>('/sops?limit=200').then((r) => setSops(r.items)).catch(() => undefined);
-  }, [canEdit]);
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -100,65 +95,24 @@ function Kanbans() {
 
   const setField = (k: keyof typeof q) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setQ({ ...q, [k]: e.target.value });
 
-  async function remove(k: Kanban) {
-    if (!confirm(`Delete ${k.partCode}?`)) return;
-    try {
-      await api(`/kanbans/${k.id}`, { method: 'DELETE' });
-      await load();
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-  }
-
-  const orderLink = (k: Kanban) =>
-    k.orderingType === 'url' && k.orderingUrl
-      ? { href: k.orderingUrl, label: 'Order online', external: true }
-      : k.orderingType === 'email' && k.orderingEmail
-        ? { href: `mailto:${k.orderingEmail}?subject=${encodeURIComponent(`Order ${k.partCode}`)}`, label: 'Email order', external: false }
-        : k.orderingType === 'sop' && k.orderingSop
-          ? { href: `/sops/${k.orderingSop.id}`, label: 'Ordering SOP', external: false }
-          : null;
-
   return (
     <>
       <SubbarLeft>
         {canEdit && (
-          <div className="menu">
-            <button className="btn btn-orange" onClick={() => setCreateMenu((o) => !o)}>
-              + Create New
-            </button>
-            {createMenu && (
-              <div className="menu-list" style={{ left: 0, right: 'auto' }} onMouseLeave={() => setCreateMenu(false)}>
-                <button
-                  onClick={() => {
-                    setCreateMenu(false);
-                    setDialog({ kind: 'form' });
-                  }}
-                >
-                  New card
-                </button>
-                <button
-                  onClick={() => {
-                    setCreateMenu(false);
-                    setDialog({ kind: 'import' });
-                  }}
-                >
-                  Bulk import (CSV)
-                </button>
-                <button
-                  onClick={() => {
-                    setCreateMenu(false);
-                    void exportCsv();
-                  }}
-                >
-                  Export CSV
-                </button>
-              </div>
-            )}
-          </div>
+          <Link href="/kanbans/new" className="btn btn-orange">
+            + Create New
+          </Link>
         )}
       </SubbarLeft>
       <SubbarRight>
+        {canEdit && (
+          <button className="icon-btn" aria-label="Bulk import (CSV)" title="Bulk import (CSV)" onClick={() => setDialog({ kind: 'import' })}>
+            {Icons.upload}
+          </button>
+        )}
+        <button className="icon-btn" aria-label="Export CSV" title="Export CSV" onClick={() => void exportCsv()}>
+          {Icons.download}
+        </button>
         <button className={`icon-btn ${showFilters ? 'on' : ''}`} aria-label="Filter" title="Filter" onClick={() => setShowFilters((o) => !o)}>
           {Icons.filter}
         </button>
@@ -226,14 +180,13 @@ function Kanbans() {
 
       <div className={`sop-grid kanban-grid${selected.size ? ' selecting' : ''}`}>
         {data?.items.map((k) => {
-          const order = orderLink(k);
           const title = k.partDescription ? `[${k.partCode}] ${k.partDescription}` : k.partCode;
           return (
             <div
               key={k.id}
               className={`sop-card kanban-card${selected.has(k.id) ? ' selected' : ''}`}
               style={{ borderLeftColor: k.color || 'var(--wood-grad)' }}
-              onClick={() => canEdit && setDialog({ kind: 'form', kanban: k })}
+              onClick={() => canEdit && router.push(`/kanbans/${k.id}/edit`)}
             >
               <div className="kanban-thumb">
                 {k.picture ? (
@@ -269,27 +222,15 @@ function Kanbans() {
                 <div className="line">Created By: <b>{k.createdBy?.name ?? 'N/A'}</b></div>
                 <div className="line">Last Modified: <b>{fmtDate(k.updatedAt)}</b></div>
               </div>
-              <div className="menu kanban-more" onClick={(e) => e.stopPropagation()}>
-                <button className="more" aria-label={`Actions for ${k.partCode}`} onClick={() => setCardMenu((m) => (m === k.id ? null : k.id))}>
-                  •••
-                </button>
-                {cardMenu === k.id && (
-                  <div className="menu-list" onMouseLeave={() => setCardMenu(null)}>
-                    {canEdit && <button onClick={() => { setCardMenu(null); setDialog({ kind: 'form', kanban: k }); }}>Edit</button>}
-                    <button onClick={() => { setCardMenu(null); toggle(k.id); }}>{selected.has(k.id) ? 'Deselect' : 'Select'}</button>
-                    {order && (
-                      <a href={order.href} {...(order.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
-                        {order.label}
-                      </a>
-                    )}
-                    {canEdit && (
-                      <button className="danger" onClick={() => { setCardMenu(null); void remove(k); }}>
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+              <KanbanCardMenu
+                kanban={k}
+                canEdit={canEdit}
+                onError={setError}
+                onChanged={(msg) => {
+                  setNotice(msg ?? null);
+                  void load();
+                }}
+              />
             </div>
           );
         })}
@@ -299,17 +240,6 @@ function Kanbans() {
 
       {dialog && (
         <div className="dialog-backdrop" onClick={() => setDialog(null)}>
-          {dialog.kind === 'form' && (
-            <KanbanForm
-              kanban={dialog.kanban}
-              sops={sops}
-              onCancel={() => setDialog(null)}
-              onDone={() => {
-                setDialog(null);
-                void load();
-              }}
-            />
-          )}
           {dialog.kind === 'import' && (
             <ImportDialog
               onClose={(msg) => {

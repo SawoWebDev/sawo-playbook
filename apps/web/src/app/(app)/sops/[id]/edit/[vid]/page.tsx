@@ -343,7 +343,13 @@ export default function SopEditorPage() {
   return (
     <div className="sop-editor">
       <div className="editor-head">
-        <Link href={`/sops/${id}`} className="back-link">
+        <Link
+          href="/sops"
+          className="back-link"
+          onClick={(e) => {
+            if (dirty && !confirm('Discard unsaved changes?')) e.preventDefault();
+          }}
+        >
           ‹ Back
         </Link>
         <strong>Edit {isAdvanced ? 'Advanced' : 'Standard'} Operation</strong>

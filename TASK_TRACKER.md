@@ -199,4 +199,8 @@ docker compose --profile test build api-test               # rebuild after packa
 - Kanbans list restyled like STD OPS (Create New menu, filter/sort icons, thumbnail tiles, ••• menu); API list/get now return `createdBy`.
 - STD OPS card ••• menu (`components/SopCardMenu.tsx`): Edit, Duplicate (`POST /api/sops/:id/duplicate`), Translate (coming soon), Update Training Record, Training History, Add to Folder, Change History, View or Print PDF, Delete removes the whole SOP while it is draft / not yet finished (`DELETE /api/sops/:id`; 409 when fully published with nothing in progress). 50 SOP API tests green.
 - SOP PDF header: SAWO logo moved to the left.
+- Kanbans: full-page Add / Edit Kanban (`/kanbans/new`, `/kanbans/[id]/edit`, Duplicate via `?copy=`); Create New is a direct link; bulk import / export CSV as bar icons.
+- Kanban ••• menu (`components/KanbanCardMenu.tsx`): Edit, Delete, Duplicate, Change History (`GET /api/kanbans/:id/history`), View or Print PDF.
+- Kanban ordering URL optional (migration `20261001000000_kanban_url_optional`). 12 kanban API tests green.
+- Nav: PRODUCT label removed; SOP editor Back goes to the STD OPS list.
 - Pending: update `apps/api/src/pdf/sawo-logo.ts` to the new logo; run e2e profile (local Playwright browser download failed).

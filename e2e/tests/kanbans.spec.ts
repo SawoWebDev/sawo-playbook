@@ -9,7 +9,6 @@ test('bulk import, filter, bulk edit and create a card', async ({ browser }) => 
   await expect(page.getByText('No kanban cards found.')).toBeVisible();
 
   // Invalid CSV: row-level errors, nothing imported
-  await page.getByRole('button', { name: '+ Create New' }).click();
   await page.getByRole('button', { name: 'Bulk import (CSV)' }).click();
   const box = page.getByPlaceholder('…or paste CSV here');
   await box.fill('part_code,ordering_type,ordering_email\nGOOD-1,email,buyer@example.com\n,email,buyer@example.com\nBAD-2,email,not-an-email\n');
@@ -22,7 +21,6 @@ test('bulk import, filter, bulk edit and create a card', async ({ browser }) => 
   await expect(page.getByText('No kanban cards found.')).toBeVisible();
 
   // Valid CSV
-  await page.getByRole('button', { name: '+ Create New' }).click();
   await page.getByRole('button', { name: 'Bulk import (CSV)' }).click();
   await page.getByPlaceholder('…or paste CSV here').fill(
     [
@@ -60,14 +58,17 @@ test('bulk import, filter, bulk edit and create a card', async ({ browser }) => 
   await expect(cards.filter({ hasText: 'Rack Z9' })).toHaveCount(2);
 
   // Create a single card; ordering target validation
-  await page.getByRole('button', { name: '+ Create New' }).click();
-  await page.getByRole('button', { name: 'New card', exact: true }).click();
-  await page.getByLabel('Part code *').fill('SEAL-42');
-  await page.getByLabel('Part description').fill('Piston seal kit');
-  await page.locator('.dialog select').filter({ hasText: 'Web link' }).selectOption('email');
+  await page.getByRole('link', { name: '+ Create New' }).click();
+  await expect(page).toHaveURL(/\/kanbans\/new$/);
+  await page.getByLabel('Sawo Inc Part Number *').fill('SEAL-42');
+  await page.getByLabel('Part Description').fill('Piston seal kit');
+  await page.getByLabel('Email', { exact: true }).check();
   await page.getByPlaceholder('purchasing@example.com').fill('purchasing@example.com');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save' }).first().click();
+  await expect(page).toHaveURL(/\/kanbans$/);
   await expect(cards).toHaveCount(4);
-  await expect(cards.filter({ hasText: 'SEAL-42' }).getByRole('link', { name: 'Email order' })).toHaveAttribute('href', /^mailto:purchasing@example\.com/);
+  await cards.filter({ hasText: 'SEAL-42' }).getByRole('button', { name: 'Actions for SEAL-42' }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByPlaceholder('purchasing@example.com')).toHaveValue('purchasing@example.com');
   await context.close();
 });

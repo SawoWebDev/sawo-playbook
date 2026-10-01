@@ -57,7 +57,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const menuItems = [...visible(MODULES), ...visible(ADMIN), { href: '/profile', label: 'Profile' }];
   // The module toolbar (tabs) is only shown on the three list pages, not on detail pages.
   const showBar = TABS.some((t) => pathname === t.href);
-  const detailBar = /^\/(sops|kiosk)\/[^/]+$/.test(pathname);
+  const detailBar = /^\/(sops|kiosk)\/[^/]+$/.test(pathname) || /^\/kanbans\/(new|[^/]+\/edit)$/.test(pathname);
   const count = (href: string) => (href === '/sops' ? counts.sops : href === '/kanbans' ? counts.kanbans : undefined);
 
   return (
@@ -70,7 +70,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="spacer" />
         {!showBar && (
           <nav className="topnav">
-            <span>PRODUCT</span>
             {allowed(user.role, 'viewSops') && <Link href="/folders">FOLDERS</Link>}
             {tabs.map((t) => (
               <Link key={t.href} href={t.href}>

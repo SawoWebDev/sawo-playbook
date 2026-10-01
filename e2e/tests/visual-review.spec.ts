@@ -56,7 +56,6 @@ test('@review screenshot tour (desktop + mobile)', async ({ browser }) => {
   await shot(page, 'desktop-sops-list');
 
   await page.goto('/kanbans');
-  await page.getByRole('button', { name: '+ Create New' }).click();
   await page.getByRole('button', { name: 'Bulk import (CSV)' }).click();
   await page
     .getByPlaceholder('…or paste CSV here')
