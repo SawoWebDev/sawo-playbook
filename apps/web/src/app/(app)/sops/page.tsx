@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
-import { SopCardMenu } from '@/components/SopCardMenu';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { OptButton } from '@/components/OptButton';
+import { Item, SopCardMenu } from '@/components/SopCardMenu';
 import { SopStatusBadge } from '@/components/StatusBadge';
 import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
@@ -12,13 +13,6 @@ import { buildTree, flatten, type FolderRow } from '@/lib/folders';
 import { errorMessage, fmtListDate } from '@/lib/format';
 import { allowed } from '@/lib/permissions';
 import type { SopDetail, SopListItem, SopType } from '@/lib/types';
-
-const CREATE_OPTIONS: { type: SopType; label: string; enabled: boolean; note?: string }[] = [
-  { type: 'standard', label: 'Standard SOP', enabled: true },
-  { type: 'video', label: 'Video SOP', enabled: false, note: 'coming soon' },
-  { type: 'advanced', label: 'Advanced SOP', enabled: true },
-  { type: 'document', label: 'Upload Document', enabled: false, note: 'coming soon' },
-];
 
 const SORT_OPTIONS = [
   { value: 'oldest', label: 'Oldest' },
@@ -46,7 +40,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 type View = 'grid' | 'list';
-type Popover = 'create' | 'sort' | 'filter' | 'view' | null;
+type Popover = 'sort' | 'filter' | 'view' | null;
 interface Creator {
   id: string;
   name: string;
@@ -146,6 +140,29 @@ function SopsList() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [popover]);
 
+  const hasMore = items.length < total;
+  const sentinel = useRef<HTMLDivElement>(null);
+  const loadingMore = useRef(false);
+  useEffect(() => {
+    loadingMore.current = false;
+  }, [items.length]);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting || loadingMore.current) return;
+        loadingMore.current = true;
+        void load(items.length).finally(() => {
+          loadingMore.current = false;
+        });
+      },
+      { rootMargin: '300px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, items.length, load]);
+
   const folderOptions = flatten(buildTree(folders));
   const canCreate = allowed(user?.role, 'editSops');
   const togglePopover = (p: Exclude<Popover, null>) => setPopover((cur) => (cur === p ? null : p));
@@ -238,53 +255,11 @@ function SopsList() {
 
   return (
     <>
-      <SubbarLeft>
-        {canCreate && (
-          <div className="menu">
-            <button className="btn btn-orange" onClick={() => togglePopover('create')}>
-              + Create New
-            </button>
-            {popover === 'create' && (
-              <div className="menu-list" style={{ left: 0, right: 'auto' }}>
-                {CREATE_OPTIONS.map((o) => (
-                  <button
-                    key={o.type}
-                    disabled={!o.enabled}
-                    onClick={() => {
-                      setCreating(o.type);
-                      setPopover(null);
-                    }}
-                  >
-                    {o.label} {o.note && <span className="muted">({o.note})</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+      <SubbarRight>
         <div className="subbar-search">
           {Icons.search}
           <input placeholder="Search name or reference…" aria-label="Search SOPs" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-      </SubbarLeft>
-      <SubbarRight>
-        {canCreate && (
-          <button className="icon-btn" aria-label="Bulk import (CSV)" title="Bulk import (CSV)" onClick={() => setShowImport(true)}>
-            {Icons.upload}
-          </button>
-        )}
-        {isManager ? (
-          <button className="icon-btn" aria-label="Export full backup" title="Export full backup (every SOP with its steps and images)" onClick={() => void startBackup()}>
-            {Icons.download}
-          </button>
-        ) : (
-          <button className="icon-btn" aria-label="Export CSV" title="Export CSV" onClick={() => void exportCsv()}>
-            {Icons.download}
-          </button>
-        )}
-        <Link href="/folders" className="icon-btn" aria-label="Folders" title="Folders">
-          {Icons.folder}
-        </Link>
         <div className="menu">
           <button className={`icon-btn ${popover === 'sort' ? 'on' : ''}`} aria-label="Sort" title="Sort" onClick={() => togglePopover('sort')}>
             {Icons.sort}
@@ -390,25 +365,61 @@ function SopsList() {
             </div>
           )}
         </div>
+        <Link href="/folders" className="icon-btn" aria-label="Folders" title="Folders">
+          {Icons.folder}
+        </Link>
         <div className="menu">
           <button className={`icon-btn view-kebab ${popover === 'view' ? 'on' : ''}`} aria-label="View options" title="View options" onClick={() => togglePopover('view')}>
             ⋮
           </button>
           {popover === 'view' && (
             <div className="menu-list icon-menu">
-              <button className={view === 'grid' ? 'active' : ''} onClick={() => changeView('grid')}>
-                {Icons.gridView}
-                <span>Grid view</span>
-                {view === 'grid' && <span className="note">✓</span>}
-              </button>
-              <button className={view === 'list' ? 'active' : ''} onClick={() => changeView('list')}>
-                {Icons.listView}
-                <span>List view</span>
-                {view === 'list' && <span className="note">✓</span>}
-              </button>
+              <div className="menu-heading">Import / Export</div>
+              {canCreate && (
+                <Item
+                  icon={Icons.upload}
+                  label="Bulk import (CSV)"
+                  onClick={() => {
+                    setPopover(null);
+                    setShowImport(true);
+                  }}
+                />
+              )}
+              {isManager ? (
+                <Item
+                  icon={Icons.download}
+                  label="Export full backup"
+                  onClick={() => {
+                    setPopover(null);
+                    void startBackup();
+                  }}
+                />
+              ) : (
+                <Item
+                  icon={Icons.download}
+                  label="Export CSV"
+                  onClick={() => {
+                    setPopover(null);
+                    void exportCsv();
+                  }}
+                />
+              )}
             </div>
           )}
         </div>
+        <div className="view-toggle" role="group" aria-label="View">
+          <button className={`icon-btn ${view === 'grid' ? 'on' : ''}`} aria-label="Grid view" aria-pressed={view === 'grid'} title="Grid view" onClick={() => changeView('grid')}>
+            {Icons.gridView}
+          </button>
+          <button className={`icon-btn ${view === 'list' ? 'on' : ''}`} aria-label="List view" aria-pressed={view === 'list'} title="List view" onClick={() => changeView('list')}>
+            {Icons.listView}
+          </button>
+        </div>
+        {canCreate && (
+          <OptButton inline onClick={() => setCreating('standard')}>
+            + Create New
+          </OptButton>
+        )}
       </SubbarRight>
 
       {selected.size > 0 && (
@@ -520,11 +531,12 @@ function SopsList() {
           </table>
         </div>
       )}
-      {items.length < total && (
+      {hasMore && (
         <div style={{ textAlign: 'center', marginTop: 16 }}>
           <button className="btn" onClick={() => load(items.length)}>
             Load more ({total - items.length} remaining)
           </button>
+          <div ref={sentinel} aria-hidden style={{ height: 1 }} />
         </div>
       )}
 

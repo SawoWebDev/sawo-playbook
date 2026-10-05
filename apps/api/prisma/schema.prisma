@@ -1,4 +1,4 @@
-// GembaDocs schema — see GembaDocs-System-Build-Plan-FINAL.md §6 / §7.
+// SAWO Playbook schema — see SAWO-Playbook-System-Build-Plan-FINAL.md §6 / §7.
 // Conventions:
 //  * Every tenant-owned table carries organization_id (Invariant #1), including
 //    child tables (sop_version, sop_step, ...) so every query can be tenant-scoped

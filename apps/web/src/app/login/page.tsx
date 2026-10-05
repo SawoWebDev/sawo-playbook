@@ -131,9 +131,12 @@ function Login() {
         <button className="btn btn-primary" disabled={busy} type="submit" style={{ width: '100%', justifyContent: 'center' }}>
           {busy ? 'Signing in…' : mfaToken ? 'Verify' : 'Sign in'}
         </button>
-        <p className="muted">
-          <Link href="/forgot-password">Forgot password?</Link> · New organization? <Link href="/signup">Create an account</Link>
-        </p>
+        <div className="auth-links muted">
+          <Link href="/forgot-password">Forgot password?</Link>
+          <span>
+            New organization? <Link href="/signup">Create an account</Link>
+          </span>
+        </div>
       </form>
     </div>
   );

@@ -33,7 +33,7 @@ export class MailService {
     }
     this.transporter ??= nodemailer.createTransport(url);
     await this.transporter.sendMail({
-      from: process.env.MAIL_FROM ?? 'GembaDocs <no-reply@gembadocs.local>',
+      from: process.env.MAIL_FROM ?? 'SAWO Playbook <no-reply@sawo-playbook.local>',
       to: msg.to,
       subject: msg.subject,
       text: msg.text,

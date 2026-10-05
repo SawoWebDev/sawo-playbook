@@ -22,8 +22,7 @@
 @keyframes bk-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .bk-step.is-active .bk-dot { animation: none; border-top-color: var(--primary); } .bk-bar-fill { transition: none; } }
 
-.bk-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-@media (max-width: 760px) { .bk-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.bk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .bk-tile { background: var(--surface-2); border-radius: var(--radius); padding: 10px 12px; }
 .bk-tile-label { font-size: 12px; color: var(--muted); }
 .bk-tile-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }

@@ -58,15 +58,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const menuItems = [...visible(MODULES), ...visible(ADMIN), { href: '/profile', label: 'Profile' }];
   // The module toolbar (tabs) is only shown on the three list pages, not on detail pages.
   const showBar = TABS.some((t) => pathname === t.href);
-  const detailBar = /^\/(sops|kiosk)\/[^/]+$/.test(pathname) || /^\/kanbans\/(new|[^/]+\/edit)$/.test(pathname);
+  const detailBar = /^\/(sops|kiosk)\/[^/]+$/.test(pathname) || /^\/kanbans\/([^/]+|[^/]+\/edit)$/.test(pathname);
   const count = (href: string) => (href === '/sops' ? counts.sops : href === '/kanbans' ? counts.kanbans : undefined);
 
   return (
     <div className="app">
       <header className="topbar">
-        <Link href="/sops" className="logo" aria-label="SAWO GembaDocs home">
+        <Link href="/sops" className="logo" aria-label="SAWO Playbook home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/assets/images/sawo-logo.webp" alt="SAWO" width={400} height={255} />
+          <img src="/assets/images/logo-sawo.webp" alt="SAWO" width={75} height={97} />
+          <span className="logo-name">SAWO Playbook</span>
         </Link>
         <div className="spacer" />
         {!showBar && (
@@ -113,15 +114,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </header>
       {showBar && (
         <div className="subbar">
-          <div className="subbar-side" id="subbar-left" />
-          <nav className="tabs">
-            {tabs.map((t) => (
-              <Link key={t.href} href={t.href} className={isActive(t.href) ? 'active' : ''}>
-                {t.label}
-                {count(t.href) !== undefined && ` (${count(t.href)})`}
-              </Link>
-            ))}
-          </nav>
+          <div className="subbar-side" id="subbar-left">
+            <nav className="tabs">
+              {tabs.map((t) => (
+                <Link key={t.href} href={t.href} className={isActive(t.href) ? 'active' : ''}>
+                  {t.label}
+                  {count(t.href) !== undefined && ` (${count(t.href)})`}
+                </Link>
+              ))}
+            </nav>
+          </div>
           <div className="subbar-side subbar-right" id="subbar-right" />
         </div>
       )}

@@ -18,7 +18,7 @@ x-api-env: &api-env
   STORAGE_DIR: /data/uploads
   PRISMA_HIDE_UPDATE_MESSAGE: "1"
   SMTP_URL: ${SMTP_URL:?set SMTP_URL, e.g. smtps://user:pass@smtp.example.com:465}
-  MAIL_FROM: ${MAIL_FROM:-GembaDocs <no-reply@example.com>}
+  MAIL_FROM: ${MAIL_FROM:-SAWO Playbook <no-reply@example.com>}
 
 services:
   db:

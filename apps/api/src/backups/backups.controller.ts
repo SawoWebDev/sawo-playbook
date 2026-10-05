@@ -37,7 +37,7 @@ export class BackupsController {
   @RequirePermission(Permission.OrgSettingsManage)
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({ destination: tmpdir(), filename: (_req, _file, cb) => cb(null, join(`gemba-restore-${randomUUID()}.zip`)) }),
+      storage: diskStorage({ destination: tmpdir(), filename: (_req, _file, cb) => cb(null, join(`sawo-playbook-restore-${randomUUID()}.zip`)) }),
       limits: { fileSize: MAX_RESTORE_BYTES, files: 1 },
     }),
   )

@@ -151,3 +151,22 @@ list all SOPs, then `GET /api/sops/:id/versions/:activeVersionId` for each and c
 
 Both gembadocs.com and the local app's login are in `.env` (gitignored, never commit). See
 `.env.example` for the required keys.
+
+## Kanbans (504) — added 2026-10-05
+
+Pipeline (all resumable, all paced to stay under the app's 120 requests/minute limit and gentle on gembadocs.com):
+
+1. `node pull-kanbans.js` — scrolls the Kanbans list (`/front-dashboard?tab=kanban`) to collect every card (created date, creator,
+   last modified, colour, list position), opens each kanban's view page (`/view-kanban/<id>`) for all fields, downloads the picture.
+   Output: `output/kanbans/<id>.json`, `output/kanbans/images/`, `output/kanbans/manifest.json` (list order). Skips kanbans already on disk.
+   `--limit=N` for a test; do **not** use `--url=` to retry one (it has no list-card data) — re-run the plain command instead.
+2. `node push-kanbans.js` — uploads each picture and creates the kanban through the API; remembers progress in `output/kanbans/.pushed.json`.
+3. `node apply-kanban-fidelity.js` — sets Created Date, Last Modified and Created By (not settable via the API) with a one-off script run in the api container;
+   same-day kanbans keep gembadocs' list order (the one higher up gets the later creation time).
+4. `node verify-kanbans.js` — compares count, list order, every text field, creator, dates and each picture (sha256) with what was pulled. Exit code 1 on any mismatch.
+
+Result: 504/504 imported, **0 mismatches** (order differs at 0 of 504 positions).
+
+Things that are as gembadocs has them, not import bugs: 8 pictures are completely white; 3 part numbers are mistyped at the source
+(`[1SH94-039`, `1SH71-012]`, `0.031251SH09-022`); gembadocs cuts descriptions at 50 characters; one "Ordering Item URL" is plain text, not a web link, so the app's
+link-only field was left empty. Values the app has no field for yet (Language, Show Barcode in Bin Label, PDF header text colour, second ordering URL) stay in the JSON — see Task K1 in `TASK_TRACKER.md`.

@@ -71,7 +71,7 @@ export function verifyTotp(secretB32: string, code: string, now = Date.now()): n
   return null;
 }
 
-export function otpauthUri(secretB32: string, account: string, issuer = 'GembaDocs'): string {
+export function otpauthUri(secretB32: string, account: string, issuer = 'SAWO Playbook'): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secretB32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=${TOTP_PERIOD}`;
 }

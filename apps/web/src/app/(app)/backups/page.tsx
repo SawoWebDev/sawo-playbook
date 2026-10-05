@@ -20,26 +20,27 @@ interface RestoreSummary {
   foldersCreated: number;
   usersCreated: number;
   usersMatched: number;
+  kanbans: { inFile: number; created: number; skipped: number; failed: { partCode: string; error: string }[] };
 }
 
 interface Job {
   id: string;
   kind: 'export' | 'restore';
   status: 'running' | 'done' | 'failed';
-  phase: 'preparing' | 'sops' | 'media' | 'finalizing' | 'validating' | 'restoring' | 'done';
+  phase: 'preparing' | 'sops' | 'kanbans' | 'media' | 'finalizing' | 'validating' | 'restoring' | 'done';
   dryRun: boolean;
   startedAt: string;
   finishedAt: string | null;
   startedByName: string;
   sourceName: string | null;
   percent: number;
-  total: { sops: number; media: number };
-  done: { sops: number; media: number };
+  total: { sops: number; kanbans: number; media: number };
+  done: { sops: number; kanbans: number; media: number };
   bytes: number;
   current: string | null;
   warnings: string[];
   error: string | null;
-  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; media: number } } | null;
+  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; kanbans: number; media: number } } | null;
   summary: RestoreSummary | null;
 }
 
@@ -63,6 +64,7 @@ function fmtElapsed(ms: number): string {
 const EXPORT_STEPS = [
   { key: 'preparing', label: 'Reading organization' },
   { key: 'sops', label: 'Collecting SOPs' },
+  { key: 'kanbans', label: 'Collecting kanbans' },
   { key: 'media', label: 'Packing images' },
   { key: 'finalizing', label: 'Finishing file' },
 ] as const;
@@ -202,7 +204,7 @@ function Backups() {
     <>
       <h1>Backups</h1>
       <p className="muted bk-lead">
-        A backup is a single file with every SOP in this organization — all versions, steps, settings and images — ready to be restored here or into another organization.
+        A backup is a single file with every SOP and kanban in this organization — all versions, steps, settings and images — ready to be restored here or into another organization.
         Keep copies somewhere safe.
       </p>
 
@@ -235,6 +237,7 @@ function Backups() {
               <th>What</th>
               <th>By</th>
               <th className="num">SOPs</th>
+              <th className="num">Kanbans</th>
               <th className="num">Images</th>
               <th className="num">Size</th>
               <th />
@@ -251,6 +254,7 @@ function Backups() {
                 </td>
                 <td>{j.startedByName}</td>
                 <td className="num">{j.file?.counts.sops ?? j.summary?.created ?? '—'}</td>
+                <td className="num">{j.file?.counts.kanbans ?? j.summary?.kanbans?.created ?? '—'}</td>
                 <td className="num">{j.file?.counts.media ?? j.summary?.mediaCreated ?? '—'}</td>
                 <td className="num">{j.file ? fmtBytes(j.file.sizeBytes) : '—'}</td>
                 <td>
@@ -297,7 +301,11 @@ function ProgressPanel({ job, onDownload }: { job: Job; onDownload: () => void }
       ? job.status === 'running' ? 'Checking backup file…' : job.status === 'done' ? 'Backup file checked' : 'Backup file rejected'
       : job.status === 'running' ? 'Restoring…' : job.status === 'done' ? 'Restore complete' : 'Restore failed';
   const barClass = job.status === 'done' ? 'is-done' : job.status === 'failed' ? 'is-failed' : '';
-  const verbs = isExport ? { sops: 'SOPs', media: 'Images' } : job.dryRun ? { sops: 'SOPs checked', media: 'Images checked' } : { sops: 'SOPs restored', media: 'Images restored' };
+  const verbs = isExport
+    ? { sops: 'SOPs', kanbans: 'Kanbans', media: 'Images' }
+    : job.dryRun
+      ? { sops: 'SOPs checked', kanbans: 'Kanbans checked', media: 'Images checked' }
+      : { sops: 'SOPs restored', kanbans: 'Kanbans restored', media: 'Images restored' };
 
   return (
     <section className="card bk-panel" aria-label="Progress">
@@ -333,6 +341,7 @@ function ProgressPanel({ job, onDownload }: { job: Job; onDownload: () => void }
 
       <div className="bk-tiles">
         <Tile label={verbs.sops} value={`${job.done.sops} / ${job.total.sops}`} />
+        {(isExport || job.total.kanbans > 0) && <Tile label={verbs.kanbans} value={`${job.done.kanbans} / ${job.total.kanbans}`} />}
         <Tile label={verbs.media} value={`${job.done.media} / ${job.total.media}`} />
         <Tile label={isExport ? (job.status === 'running' ? 'File size so far' : 'File size') : 'Image data'} value={fmtBytes(job.bytes)} />
         <Tile label="Elapsed" value={fmtElapsed(elapsed)} />
@@ -347,7 +356,7 @@ function ProgressPanel({ job, onDownload }: { job: Job; onDownload: () => void }
         <div className="bk-result">
           <h3>{job.file.name}</h3>
           <p className="muted" style={{ margin: '0 0 10px' }}>
-            {fmtBytes(job.file.sizeBytes)} · {job.file.counts.sops} SOPs · {job.file.counts.versions} versions · {job.file.counts.steps} steps · {job.file.counts.media} images
+            {fmtBytes(job.file.sizeBytes)} · {job.file.counts.sops} SOPs · {job.file.counts.versions} versions · {job.file.counts.steps} steps · {job.file.counts.kanbans} kanbans · {job.file.counts.media} images
           </p>
           <button className="btn btn-primary" onClick={onDownload}>
             Download backup
@@ -392,6 +401,25 @@ function RestoreResult({ summary }: { summary: RestoreSummary }) {
         {!summary.dryRun && (summary.foldersCreated > 0 || summary.usersCreated > 0) &&
           ` Also created ${summary.foldersCreated} folder(s) and ${summary.usersCreated} placeholder user(s) for people who were not in this organization.`}
       </p>
+      {summary.kanbans.inFile > 0 && (
+        <p style={{ margin: '0 0 6px' }}>
+          <strong>{summary.kanbans.created}</strong> {summary.dryRun ? 'kanbans would be created' : 'kanbans restored'}
+          {summary.kanbans.skipped > 0 && ` · ${summary.kanbans.skipped} already exist and were skipped`}
+          {summary.kanbans.failed.length > 0 && ` · ${summary.kanbans.failed.length} could not be restored`}.
+        </p>
+      )}
+      {summary.kanbans.failed.length > 0 && (
+        <details className="bk-warn" open>
+          <summary className="error">{summary.kanbans.failed.length} kanban(s) could not be restored</summary>
+          <ul className="bk-list">
+            {summary.kanbans.failed.map((k, i) => (
+              <li key={i}>
+                {k.partCode}: {k.error}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {summary.skipped.length > 0 && (
         <details className="bk-warn">
           <summary>{summary.skipped.length} skipped</summary>

@@ -80,7 +80,6 @@ export function KanbanCardMenu({
       {open && (
         <div className={`menu-list icon-menu${up ? ' up' : ''}`} onMouseLeave={() => setOpen(false)}>
           {canEdit && <Item icon={Icons.pencil} label="Edit" onClick={() => run(async () => router.push(`/kanbans/${k.id}/edit`))} />}
-          {canEdit && <Item icon={Icons.trash} label="Delete" onClick={remove} />}
           {canEdit && <Item icon={Icons.copy} label="Duplicate" onClick={() => run(async () => router.push(`/kanbans/new?copy=${k.id}`))} />}
           <Item
             icon={Icons.history}
@@ -91,6 +90,7 @@ export function KanbanCardMenu({
             }}
           />
           <Item icon={Icons.eye} label="View or Print PDF" onClick={printPdf} />
+          {canEdit && <Item icon={Icons.trash} label="Delete" danger onClick={remove} />}
         </div>
       )}
       {history && <ChangeHistory kanban={k} onClose={() => setHistory(false)} />}
@@ -98,16 +98,16 @@ export function KanbanCardMenu({
   );
 }
 
-function Item({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+function Item({ icon, label, danger, onClick }: { icon: ReactNode; label: string; danger?: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick}>
+    <button type="button" className={danger ? 'danger' : undefined} onClick={onClick}>
       {icon}
       <span>{label}</span>
     </button>
   );
 }
 
-function ChangeHistory({ kanban: k, onClose }: { kanban: Kanban; onClose: () => void }) {
+export function ChangeHistory({ kanban: k, onClose }: { kanban: Kanban; onClose: () => void }) {
   const [rows, setRows] = useState<HistoryRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {

@@ -4,7 +4,7 @@ import { SAWO_LOGO_DATA_URI } from '../pdf/sawo-logo';
 import { escapeHtml } from '../sops/sanitize';
 
 /**
- * Printable kanban — a faithful copy of the GembaDocs kanban PDF layout (two A4 pages per card):
+ * Printable kanban — a faithful copy of the reference kanban PDF layout (two A4 pages per card):
  *   page 1  "OPTION 1 SMALL": a fold-and-cut strip (front, back, kanban pulled, bin label) + a large bin label
  *   page 2  "OPTION 2 LARGE": the same four parts at quarter-page size, turned sideways
  * Every position below is in millimetres, measured from the reference PDF.

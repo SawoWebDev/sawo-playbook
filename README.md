@@ -1,9 +1,9 @@
-# GembaDocs
+# SAWO Playbook
 
 Multi-tenant platform for operations teams: versioned SOPs with approval workflow,
 QR/PDF sharing, checklists, kanban cards, skills matrix, folders and analytics.
 
-- Specification: [GembaDocs-System-Build-Plan-FINAL.md](GembaDocs-System-Build-Plan-FINAL.md)
+- Specification: [SAWO-Playbook-System-Build-Plan-FINAL.md](SAWO-Playbook-System-Build-Plan-FINAL.md)
 - Build progress / session hand-off: [TASK_TRACKER.md](TASK_TRACKER.md)
 - Decisions: [docs/decisions](docs/decisions) · Security: [docs/security-checklist.md](docs/security-checklist.md)
 

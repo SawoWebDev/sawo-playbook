@@ -21,6 +21,7 @@ const icon = (d: ReactNode) => (
 
 export const Icons = {
   folder: icon(<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />),
+  plus: icon(<path d="M12 5v14M5 12h14" />),
   pencil: icon(<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />),
   filter: icon(<path d="M3 4h18l-7 8v6l-4 2v-8z" />),
   copy: icon(

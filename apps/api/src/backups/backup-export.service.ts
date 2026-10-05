@@ -11,6 +11,7 @@ import {
   BACKUP_FORMAT,
   BACKUP_FORMAT_VERSION,
   BackupFolder,
+  BackupKanban,
   BackupManifest,
   BackupMediaEntry,
   BackupSop,
@@ -83,7 +84,7 @@ export class BackupExporter {
       // ── preparing ──
       job.phase = 'preparing';
       job.current = 'Reading organization';
-      const [org, creator, folderRows, sopRows, mediaRefs] = await Promise.all([
+      const [org, creator, folderRows, sopRows, mediaRefs, kanbanRows] = await Promise.all([
         this.prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true } }),
         this.prisma.user.findUnique({ where: { id: actor.id }, select: { name: true, email: true } }),
         this.prisma.folder.findMany({ where: { organizationId: orgId, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
@@ -93,8 +94,14 @@ export class BackupExporter {
           select: { mediaAssetId: true },
           distinct: ['mediaAssetId'],
         }),
+        this.prisma.kanban.findMany({
+          where: { organizationId: orgId, deletedAt: null },
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          include: { media: { select: { mediaAssetId: true }, orderBy: { mediaAssetId: 'asc' } } },
+        }),
       ]);
       job.total.sops = sopRows.length;
+      job.total.kanbans = kanbanRows.length;
       job.total.media = mediaRefs.length;
       this.jobs.setPercent(job);
 
@@ -190,6 +197,51 @@ export class BackupExporter {
         this.jobs.setPercent(job);
       }
 
+      // ── kanbans ──
+      job.phase = 'kanbans';
+      const kanbans: BackupKanban[] = [];
+      for (const [index, k] of kanbanRows.entries()) {
+        job.current = k.partCode;
+        userIds.add(k.createdById);
+        if (k.pictureAssetId) mediaIds.add(k.pictureAssetId);
+        for (const m of k.media) mediaIds.add(m.mediaAssetId);
+        kanbans.push({
+          id: k.id,
+          position: index + 1,
+          partCode: k.partCode,
+          partDescription: k.partDescription,
+          pictureAssetId: k.pictureAssetId,
+          supplier: k.supplier,
+          supplierPartNo: k.supplierPartNo,
+          usedFor: k.usedFor,
+          orderWhen: k.orderWhen,
+          orderQty: k.orderQty,
+          deliveryTime: k.deliveryTime,
+          location: k.location,
+          price: k.price === null ? null : k.price.toFixed(2),
+          carriage: k.carriage === null ? null : k.carriage.toFixed(2),
+          customField1: k.customField1,
+          customField2: k.customField2,
+          orderingType: k.orderingType,
+          orderingUrl: k.orderingUrl,
+          orderingSopId: k.orderingSopId,
+          orderingEmail: k.orderingEmail,
+          tag: k.tag,
+          color: k.color,
+          barcode: k.barcode,
+          template: k.template,
+          createdAt: k.createdAt.toISOString(),
+          updatedAt: k.updatedAt.toISOString(),
+          createdById: k.createdById,
+          mediaAssetIds: k.media.map((m) => m.mediaAssetId),
+        });
+        job.done.kanbans = index + 1;
+        this.jobs.setPercent(job);
+      }
+      job.current = 'Kanbans';
+      await addJson('kanbans.json', kanbans);
+      job.bytes = arc.pointer();
+
       // ── media ──
       job.phase = 'media';
       job.total.media = mediaIds.size;
@@ -250,9 +302,9 @@ export class BackupExporter {
         createdAt: new Date().toISOString(),
         createdBy: { name: creator?.name ?? actor.name, email: creator?.email ?? actor.email },
         organization: { name: org.name },
-        source: { app: 'sawo-gemba-docs' },
-        counts: { folders: folders.length, users: users.length, sops: sopRows.length, versions: versionCount, steps: stepCount, media: mediaEntries.filter((m) => !m.missing).length, mediaBytes },
-        files: { folders: 'folders.json', users: 'users.json', media: 'media.json', sops: sopFiles },
+        source: { app: 'sawo-playbook' },
+        counts: { folders: folders.length, users: users.length, sops: sopRows.length, versions: versionCount, steps: stepCount, media: mediaEntries.filter((m) => !m.missing).length, mediaBytes, kanbans: kanbans.length },
+        files: { folders: 'folders.json', users: 'users.json', media: 'media.json', sops: sopFiles, kanbans: 'kanbans.json' },
         warnings: job.warnings.slice(),
       };
       await addJson('manifest.json', manifest);
@@ -263,9 +315,9 @@ export class BackupExporter {
       const size = (await stat(final)).size;
       job.bytes = size;
       job.file = {
-        name: `gemba-sop-backup-${manifest.createdAt.slice(0, 19).replace(/[-:]/g, '').replace('T', '-')}.zip`,
+        name: `sawo-playbook-backup-${manifest.createdAt.slice(0, 19).replace(/[-:]/g, '').replace('T', '-')}.zip`,
         sizeBytes: size,
-        counts: { sops: sopRows.length, versions: versionCount, steps: stepCount, media: manifest.counts.media },
+        counts: { sops: sopRows.length, versions: versionCount, steps: stepCount, kanbans: kanbans.length, media: manifest.counts.media },
       };
       this.jobs.setPercent(job, true);
       await this.audit.record({

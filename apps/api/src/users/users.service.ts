@@ -133,7 +133,7 @@ export class UsersService {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: actor.organizationId } });
     await this.mail.send({
       to: email,
-      subject: `You're invited to ${org.name} on GembaDocs`,
+      subject: `You're invited to ${org.name} on SAWO Playbook`,
       text: `${actor.name} invited you to join ${org.name} as ${dto.role}.\n\nAccept: ${inviteUrl}\n\nThis link expires in ${INVITE_TTL_DAYS} days.`,
     });
     return { id: invitation.id, email, role: dto.role, expiresAt: invitation.expiresAt, inviteUrl };

@@ -6,7 +6,7 @@ import './globals.css';
 import './editor.css';
 
 export const metadata: Metadata = {
-  title: 'GembaDocs',
+  title: 'SAWO Playbook',
   description: 'Standard operating procedures, kanbans and skills for operations teams',
 };
 

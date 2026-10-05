@@ -1,10 +1,16 @@
 import { Controller, Get, NotFoundException, Param, Query, Res, StreamableFile } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { Public } from '../common/decorators';
 import { sniffMime } from '../media/file-sniff';
 import { StorageService } from './storage.service';
 
-/** Serves stored files for signed URLs issued by `StorageService.signedUrl`. */
+/**
+ * Serves stored files for signed URLs issued by `StorageService.signedUrl`.
+ * Not rate-limited per visitor: a list page shows hundreds of pictures at once (each one a request here), and the HMAC
+ * signature + expiry already restrict who can fetch what.
+ */
+@SkipThrottle()
 @Controller('files')
 export class FilesController {
   constructor(private readonly storage: StorageService) {}

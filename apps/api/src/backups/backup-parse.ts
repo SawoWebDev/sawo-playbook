@@ -2,6 +2,7 @@ import {
   BACKUP_FORMAT,
   BACKUP_FORMAT_VERSION,
   BackupFolder,
+  BackupKanban,
   BackupLifecycle,
   BackupManifest,
   BackupMediaEntry,
@@ -73,6 +74,7 @@ export function parseManifest(raw: unknown): BackupManifest {
     if (!/^sops\/[A-Za-z0-9._-]+\.json$/.test(name)) throw new BackupFormatError(`files.sops[${i}] has an unexpected name`);
     return name;
   });
+  if (files.kanbans !== undefined && files.kanbans !== 'kanbans.json') throw new BackupFormatError('files.kanbans has an unexpected name');
   return {
     format: BACKUP_FORMAT,
     formatVersion: version,
@@ -88,8 +90,9 @@ export function parseManifest(raw: unknown): BackupManifest {
       steps: int(counts.steps, 'counts.steps', 0, 1e9),
       media: int(counts.media, 'counts.media', 0, 1e9),
       mediaBytes: int(counts.mediaBytes, 'counts.mediaBytes', 0, Number.MAX_SAFE_INTEGER),
+      ...(counts.kanbans === undefined ? {} : { kanbans: int(counts.kanbans, 'counts.kanbans', 0, 1e9) }),
     },
-    files: { folders: 'folders.json', users: 'users.json', media: 'media.json', sops: sopFiles },
+    files: { folders: 'folders.json', users: 'users.json', media: 'media.json', sops: sopFiles, ...(files.kanbans === undefined ? {} : { kanbans: 'kanbans.json' }) },
     warnings: Array.isArray(o.warnings) ? o.warnings.filter((w): w is string => typeof w === 'string').slice(0, 200) : [],
   };
 }
@@ -216,4 +219,61 @@ export function parseSop(raw: unknown, file: string): BackupSop {
     currentPublishedVersionId,
     versions: versions.sort((a, b) => a.versionSequence - b.versionSequence),
   };
+}
+
+function decimalOrNull(v: unknown, what: string): string | null {
+  if (v === null || v === undefined) return null;
+  const t = str(v, what, 20);
+  if (!/^\d{1,10}(\.\d{1,2})?$/.test(t)) throw new BackupFormatError(`${what} must be a positive amount with at most 2 decimals`);
+  return t;
+}
+
+function parseKanban(raw: unknown, where: string): BackupKanban {
+  const o = obj(raw, where);
+  return {
+    id: id(o.id, `${where}.id`),
+    position: int(o.position, `${where}.position`, 1, 1e9),
+    partCode: str(o.partCode, `${where}.partCode`, 100, { min: 1 }),
+    partDescription: strOrNull(o.partDescription, `${where}.partDescription`, 2000),
+    pictureAssetId: idOrNull(o.pictureAssetId, `${where}.pictureAssetId`),
+    supplier: strOrNull(o.supplier, `${where}.supplier`, 200),
+    supplierPartNo: strOrNull(o.supplierPartNo, `${where}.supplierPartNo`, 200),
+    usedFor: strOrNull(o.usedFor, `${where}.usedFor`, 500),
+    orderWhen: strOrNull(o.orderWhen, `${where}.orderWhen`, 200),
+    orderQty: strOrNull(o.orderQty, `${where}.orderQty`, 200),
+    deliveryTime: strOrNull(o.deliveryTime, `${where}.deliveryTime`, 200),
+    location: strOrNull(o.location, `${where}.location`, 200),
+    price: decimalOrNull(o.price, `${where}.price`),
+    carriage: decimalOrNull(o.carriage, `${where}.carriage`),
+    customField1: strOrNull(o.customField1, `${where}.customField1`, 500),
+    customField2: strOrNull(o.customField2, `${where}.customField2`, 500),
+    orderingType: oneOf(o.orderingType, `${where}.orderingType`, ['url', 'sop', 'email'] as const),
+    orderingUrl: strOrNull(o.orderingUrl, `${where}.orderingUrl`, 2000),
+    orderingSopId: idOrNull(o.orderingSopId, `${where}.orderingSopId`),
+    orderingEmail: strOrNull(o.orderingEmail, `${where}.orderingEmail`, 320),
+    tag: strOrNull(o.tag, `${where}.tag`, 100),
+    color: strOrNull(o.color, `${where}.color`, 30),
+    barcode: strOrNull(o.barcode, `${where}.barcode`, 200),
+    template: oneOf(o.template, `${where}.template`, ['01', '02'] as const),
+    createdAt: date(o.createdAt, `${where}.createdAt`),
+    updatedAt: date(o.updatedAt, `${where}.updatedAt`),
+    createdById: id(o.createdById, `${where}.createdById`),
+    mediaAssetIds: arr(o.mediaAssetIds ?? [], `${where}.mediaAssetIds`, 20).map((m, i) => id(m, `${where}.mediaAssetIds[${i}]`)),
+  };
+}
+
+/** One unreadable kanban never blocks the others: they are reported individually. */
+export function parseKanbans(raw: unknown): { kanbans: BackupKanban[]; invalid: { partCode: string; error: string }[] } {
+  const list = arr(raw, 'kanbans.json', 1_000_000);
+  const kanbans: BackupKanban[] = [];
+  const invalid: { partCode: string; error: string }[] = [];
+  list.forEach((item, i) => {
+    try {
+      kanbans.push(parseKanban(item, `kanban ${i + 1}`));
+    } catch (e) {
+      const code = item && typeof item === 'object' && typeof (item as Obj).partCode === 'string' ? ((item as Obj).partCode as string) : `#${i + 1}`;
+      invalid.push({ partCode: code, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+  return { kanbans, invalid };
 }

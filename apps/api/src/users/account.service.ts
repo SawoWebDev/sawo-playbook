@@ -77,7 +77,7 @@ export class AccountService {
     });
     await this.mail.send({
       to: email,
-      subject: 'Reset your GembaDocs password',
+      subject: 'Reset your SAWO Playbook password',
       text: `Reset your password: ${env.publicAppUrl}/reset-password/${raw}\n\nThis link expires in ${RESET_TTL_MINUTES} minutes. If you did not request it, ignore this email.`,
     });
     void meta;

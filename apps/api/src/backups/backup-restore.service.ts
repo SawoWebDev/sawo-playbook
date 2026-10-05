@@ -10,8 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { recomputeSopStatus } from '../sops/sop-status';
 import { sanitizeRichText } from '../sops/sanitize';
 import { StorageService } from '../storage/storage.service';
-import { BackupFolder, BackupMediaEntry, BackupSop, MAX_JSON_ENTRY_BYTES } from './backup-format';
-import { BackupFormatError, parseFolders, parseManifest, parseMedia, parseSop, parseUsers } from './backup-parse';
+import { BackupFolder, BackupKanban, BackupMediaEntry, BackupSop, MAX_JSON_ENTRY_BYTES } from './backup-format';
+import { BackupFormatError, parseFolders, parseKanbans, parseManifest, parseMedia, parseSop, parseUsers } from './backup-parse';
 import { BackupJob, BackupJobs, RestoreSummary } from './backup-jobs';
 import { ZipReader } from './zip-reader';
 
@@ -104,6 +104,7 @@ export class BackupRestorer {
       foldersCreated: 0,
       usersCreated: 0,
       usersMatched: 0,
+      kanbans: { inFile: 0, created: 0, skipped: 0, failed: [] },
     };
     job.summary = summary;
 
@@ -119,6 +120,15 @@ export class BackupRestorer {
       }
       job.done.sops += 1;
       this.jobs.setPercent(job);
+    }
+
+    let kanbanList: BackupKanban[] = [];
+    if (manifest.files.kanbans) {
+      job.current = 'Reading kanbans';
+      const parsed = parseKanbans(await zip.readJson(manifest.files.kanbans, MAX_JSON_ENTRY_BYTES));
+      kanbanList = parsed.kanbans;
+      summary.kanbans.inFile = kanbanList.length + parsed.invalid.length;
+      summary.kanbans.failed.push(...parsed.invalid);
     }
 
     // ── plan: what already exists, what is a duplicate inside the file ──
@@ -146,6 +156,23 @@ export class BackupRestorer {
       }
     }
 
+    // A kanban has no unique key of its own: the same part code created at the same moment means "already restored".
+    const haveKanbans = new Set(
+      kanbanList.length
+        ? (
+            await this.prisma.kanban.findMany({
+              where: { organizationId: orgId, deletedAt: null, partCode: { in: [...new Set(kanbanList.map((k) => k.partCode))] } },
+              select: { partCode: true, createdAt: true },
+            })
+          ).map((k) => `${k.partCode}\n${k.createdAt.getTime()}`)
+        : [],
+    );
+    const kanbansToCreate = kanbanList.filter((k) => {
+      if (!haveKanbans.has(`${k.partCode}\n${new Date(k.createdAt).getTime()}`)) return true;
+      summary.kanbans.skipped += 1;
+      return false;
+    });
+
     const publishedAssets = new Set<string>();
     const neededAssets = new Set<string>();
     for (const s of toCreate)
@@ -156,8 +183,13 @@ export class BackupRestorer {
             if (v.lifecycleState === 'PUBLISHED') publishedAssets.add(m.assetId);
           }
 
-    job.done = { sops: 0, media: 0 };
-    job.total = { sops: toCreate.length, media: neededAssets.size };
+    for (const k of kanbansToCreate) {
+      if (k.pictureAssetId) neededAssets.add(k.pictureAssetId);
+      for (const m of k.mediaAssetIds) neededAssets.add(m);
+    }
+
+    job.done = { sops: 0, kanbans: 0, media: 0 };
+    job.total = { sops: toCreate.length, kanbans: kanbansToCreate.length, media: neededAssets.size };
     this.jobs.setPercent(job);
 
     if (dryRun) {
@@ -176,6 +208,8 @@ export class BackupRestorer {
         this.jobs.setPercent(job);
       }
       job.done.sops = toCreate.length;
+      job.done.kanbans = kanbansToCreate.length;
+      summary.kanbans.created = kanbansToCreate.length;
       summary.created = toCreate.length;
       summary.versions = toCreate.reduce((n, s) => n + s.versions.length, 0);
       summary.steps = toCreate.reduce((n, s) => n + s.versions.reduce((m, v) => m + v.steps.length, 0), 0);
@@ -373,13 +407,83 @@ export class BackupRestorer {
     }
     if (removedLinks) this.jobs.warn(job, `${removedLinks} step link(s) to SOPs that are not in this backup were removed`);
 
+    // ── kanbans (after the SOPs, so a kanban that orders from an SOP can point at the restored one) ──
+    job.phase = 'restoring';
+    for (const k of kanbansToCreate) {
+      job.current = k.partCode;
+      try {
+        if (k.pictureAssetId) await ensureAsset(k.pictureAssetId);
+        for (const m of k.mediaAssetIds) await ensureAsset(m);
+
+        let orderingType = k.orderingType;
+        let orderingUrl: string | null = k.orderingUrl;
+        let orderingEmail: string | null = k.orderingEmail;
+        let orderingSopId: string | null = null;
+        if (orderingType === 'sop') {
+          const target = k.orderingSopId ? (createdSops.has(k.orderingSopId) ? sopIdMap.get(k.orderingSopId) ?? null : existingSopIdFor.get(k.orderingSopId) ?? null) : null;
+          orderingUrl = null;
+          orderingEmail = null;
+          if (target) orderingSopId = target;
+          else {
+            orderingType = 'url';
+            this.jobs.warn(job, `Kanban "${k.partCode}": the SOP it orders from is not available here, so its ordering link was cleared`);
+          }
+        } else if (orderingType === 'email' && orderingEmail) {
+          orderingUrl = null;
+        } else {
+          orderingType = 'url';
+          orderingEmail = null;
+        }
+        const picture = k.pictureAssetId ? assetMap.get(k.pictureAssetId) ?? null : null;
+        const extra = [...new Set(k.mediaAssetIds.map((m) => assetMap.get(m)).filter((x): x is string => !!x))];
+        await this.prisma.$transaction(async (tx) => {
+          const row = await tx.kanban.create({
+            data: {
+              organizationId: orgId,
+              partCode: k.partCode,
+              partDescription: k.partDescription,
+              pictureAssetId: picture,
+              supplier: k.supplier,
+              supplierPartNo: k.supplierPartNo,
+              usedFor: k.usedFor,
+              orderWhen: k.orderWhen,
+              orderQty: k.orderQty,
+              deliveryTime: k.deliveryTime,
+              location: k.location,
+              price: k.price === null ? null : new Prisma.Decimal(k.price),
+              carriage: k.carriage === null ? null : new Prisma.Decimal(k.carriage),
+              customField1: k.customField1,
+              customField2: k.customField2,
+              orderingType,
+              orderingUrl,
+              orderingSopId,
+              orderingEmail,
+              tag: k.tag,
+              color: k.color,
+              barcode: k.barcode,
+              template: k.template,
+              createdById: uid(k.createdById),
+              createdAt: new Date(k.createdAt),
+              updatedAt: new Date(k.updatedAt),
+            },
+          });
+          if (extra.length) await tx.kanbanMedia.createMany({ data: extra.map((mediaAssetId) => ({ kanbanId: row.id, mediaAssetId })) });
+        });
+        summary.kanbans.created += 1;
+      } catch (e) {
+        summary.kanbans.failed.push({ partCode: k.partCode, error: e instanceof Error ? e.message.split('\n').filter(Boolean).pop() ?? 'failed' : String(e) });
+      }
+      job.done.kanbans += 1;
+      this.jobs.setPercent(job);
+    }
+
     await this.audit.record({
       action: AuditAction.BackupRestored,
       organizationId: orgId,
       actorId: actor.id,
       entityType: 'backup',
       entityId: job.id,
-      metadata: { created: summary.created, skipped: summary.skipped.length, failed: summary.failed.length, source: job.sourceName ?? '' },
+      metadata: { created: summary.created, skipped: summary.skipped.length, failed: summary.failed.length, kanbans: summary.kanbans.created, source: job.sourceName ?? '' },
     });
   }
 

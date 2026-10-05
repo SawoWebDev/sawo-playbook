@@ -150,7 +150,7 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
     };
     try {
       await api(kanban ? `/kanbans/${kanban.id}` : '/kanbans', { method: kanban ? 'PATCH' : 'POST', body });
-      router.push('/kanbans');
+      router.push(kanban ? `/kanbans/${kanban.id}` : '/kanbans');
     } catch (err) {
       setError(errorMessage(err));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -160,14 +160,14 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
   }
 
   const actions = (
-    <>
-      <Link href="/kanbans" className="btn-link">
+    <div className="kanban-actions">
+      <Link href={kanban ? `/kanbans/${kanban.id}` : '/kanbans'} className="btn kanban-cancel">
         Cancel
       </Link>
       <button type="button" className="btn btn-primary kanban-save" disabled={busy || uploading} onClick={() => void submit()}>
         {busy ? 'Saving…' : 'Save'}
       </button>
-    </>
+    </div>
   );
 
   const field = (k: string, label: string, max: number, opts: { required?: boolean; placeholder?: string; type?: string } = {}) => (

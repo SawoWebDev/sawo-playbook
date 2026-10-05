@@ -4,7 +4,7 @@ export function fmtDate(v: string | Date | null | undefined): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
 }
 
-/** "02 Sep, 2026" — the date style gembadocs.com uses on its STD OPS list. */
+/** "02 Sep, 2026" — the date style used on the legacy STD OPS list. */
 export function fmtListDate(v: string | Date | null | undefined): string {
   if (!v) return '—';
   const d = typeof v === 'string' ? new Date(v) : v;

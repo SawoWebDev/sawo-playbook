@@ -1,6 +1,6 @@
-# GembaDocs — Build Task Tracker
+# SAWO Playbook — Build Task Tracker
 
-> Source spec: [GembaDocs-System-Build-Plan-FINAL.md](GembaDocs-System-Build-Plan-FINAL.md)
+> Source spec: [SAWO-Playbook-System-Build-Plan-FINAL.md](SAWO-Playbook-System-Build-Plan-FINAL.md)
 > This file is the hand-off log between sessions. **Read "Resume Here" first.**
 > Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
 
@@ -58,6 +58,7 @@ docker compose --profile test build api-test               # rebuild after packa
 | 2026-10-05 | `archiver` pinned to 7.x (8.x is ESM-only, risky in this CommonJS API); `yauzl` for reading | tooling |
 | 2026-10-05 | STD OPS list default sort = **Newest** (Date Raised, matches gembadocs); real *Last Modified* kept as `updatedAt`. List dates use `02 Sep, 2026` (`fmtListDate`) | user: same order/fields as gembadocs |
 | 2026-10-05 | Step duration shows in the step header (right) and is hidden when 00:00:00 (`StepsView`, kiosk) | user request |
+| 2026-10-05 | Kanbans tab: default sort = **created date, newest first** (matches gembadocs; new sort option "created date"), dates as `28 Sep, 2026`, and the page now fetches every page of results (the API returns at most 500, so the 4 oldest of 504 were silently hidden) | user: same order as gembadocs |
 
 ---
 
@@ -167,11 +168,38 @@ docker compose --profile test build api-test               # rebuild after packa
 - [x] Web `/backups`: live progress (percent bar, phases, SOP/image counters, bytes, current item, warnings), history with Download/Delete, restore panel with upload progress; STD OPS Export icon (managers) starts a backup and opens it in a new tab
 - [x] Tests `test/backups.e2e-spec.ts` (10): round trip into another org is identical (steps, images by sha256, versions, config, links, dates), dry run writes nothing, skip-existing, tampered/corrupt/malicious files, permissions, cross-tenant 404, link tamper/expiry
 - [x] `.gitignore` has `backups/`; added exceptions for the two source folders so they are tracked
-- [ ] Not in a backup (by design, for now): checklist submissions, skill assessments/records, kanbans, discarded (ABANDONED) drafts, org settings/users' passwords
+- [x] Import of all **504 kanbans** from gembadocs.com (`pull-kanbans.js` → `push-kanbans.js` → `apply-kanban-fidelity.js` → `verify-kanbans.js`): list order, every text field, creator, created/modified dates and picture (sha256) match, 0 mismatches. Source quirks kept as-is: 8 pictures are entirely white at gembadocs itself; 3 mistyped part numbers (`[1SH94-039`, `1SH71-012]`, `0.031251SH09-022`); descriptions are cut at 50 characters by gembadocs; the one ordering URL that is plain text (not a link) was left empty. Fields our schema cannot hold yet are kept in `output/kanbans/*.json`: Language (all English), Show Barcode in Bin Label (Yes 119 / No 385), PDF header text colour (all Black), second ordering URL (1).
+- [x] Kanbans are part of the backup too (`kanbans.json`: every field, picture, extra images; an SOP-based ordering link is re-pointed at the restored SOP). Real-data run: 121 SOPs + 504 kanbans + 1229 images in one 271 MB file, 0 warnings
+- [ ] Not in a backup (by design, for now): checklist submissions, skill assessments/records, discarded (ABANDONED) drafts, org settings/users' passwords
 - [ ] Approvals from people who are not in the target org collapse onto the person restoring (unique per round/approver)
 - [ ] Backups are written to the same `uploads` volume as live data — copy them off the host; no schedule/retention yet
 - [ ] `scripts/backup.sh` / `restore.sh` still reference MinIO (see Resume Here) — now partly superseded by the in-app backup
 - [ ] Dev note: Docker bind mounts on Windows don't deliver file events, so after editing API/web source run `docker compose restart api web`; running `api-test` re-runs `npm install`/`prisma generate` in the shared volume and can make the dev API return 500s for a moment
+
+## Task K1 — Kanban creation: match gembadocs "Add Kanban" (investigated 2026-10-05, not started)
+How gembadocs creates a kanban (`/add-kanban`; edit = `/add-kanban/<id>`; view = `/view-kanban/<id>`; PDF = `/kanban/pdf/<id>`):
+1. **Picture** (left column): drop or paste an image, *Upload/Change Photo*, or **Web Search** (image search).
+2. **Kanban Type** Template 01 / 02, and **Language** of the printed card (English, Portuguese, Spanish, German, Ukrainian, Dutch, Italian, Polish, Vietnamese, Chinese, Slovak, Haitian Creole).
+3. **Part Description** — textarea, max **50** characters.
+4. **QR Code Options (back of the card)**: *Ordering Item URL* / *SOP* / *Email*. Two targets per kanban: "Ordering Item URL" and "Ordering item URL (2) / other url link to be accessed by QR code" (each optional; a pasted URL or text, or an SOP picked from a list). Email mode: To (multi), Subject, cc, bcc, Body (max 1000) — for each of the two codes.
+5. **Barcode Number (Code 128)**, optional, max 20, plus the toggle **Show Barcode in Bin Label PDF** (default Yes).
+6. Text fields (max 25 each): Used For · Supplier Part Number (opt) · *<Company> Part Number* (opt — ours is `partCode`, shown as "Sawo Inc Part Number") · Supplier · Order When · Order Qty · Delivery Time · Location (opt) · Custom Field 1 / 2 (opt); Price and Carriage (opt, max 10).
+7. **PDF Header Color** (picker, default light green) and **PDF Header text Color** (Black / White). The list card's left border uses the header colour.
+8. **Tags** (optional): multi-select; type a name + Enter to create a new tag.
+9. Save / Cancel, a "Watch Kanban Explainer Video" link. Card menu: Edit · Delete · Duplicate · Change History · View or Print PDF. List tools: bulk print, bulk edit, bulk upload, sort, filter by tag, search.
+
+Already the same here: picture upload + paste, templates 01/02, description, ordering by URL/SOP/email, barcode, used for, supplier part no., supplier, order when/qty, delivery time, location, custom fields 1/2, price/carriage, header colour, a tag, and the Edit/Delete/Duplicate/History/PDF menu.
+
+Gaps to close:
+- [ ] Web Search for the picture
+- [ ] Per-kanban **Language** for the printed card (new column; labels for 12 languages in `kanban-print.ts`)
+- [ ] **Show barcode in bin label** toggle (new column)
+- [ ] **PDF header text colour** Black/White (new column)
+- [ ] **Second** ordering URL / SOP for the QR code (new column(s); CHECK constraint `kanban_ordering_target_matches_type` must allow it)
+- [ ] Email ordering with To (multi) / cc / bcc / Subject / Body instead of a single address
+- [ ] **Multiple tags** per kanban (we store one text tag) and filter by tag
+- [ ] Decide whether to match gembadocs' field limits (50 / 25 / 10 characters; ours 2000 / 200 / 500)
+- Note: kanbans imported from gembadocs keep every one of these values in `scripts/gemba-import/output/kanbans/*.json` (`fields`), including the ones our schema cannot store yet, so they can be back-filled once the columns exist.
 
 ## Phase 9 — Marketing site (optional)
 - [ ] Not started (optional per spec)

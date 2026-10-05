@@ -5,7 +5,7 @@ import { join } from 'path';
 
 export type JobKind = 'export' | 'restore';
 export type JobStatus = 'running' | 'done' | 'failed';
-export type JobPhase = 'preparing' | 'sops' | 'media' | 'finalizing' | 'validating' | 'restoring' | 'done';
+export type JobPhase = 'preparing' | 'sops' | 'kanbans' | 'media' | 'finalizing' | 'validating' | 'restoring' | 'done';
 
 export interface RestoreSummary {
   dryRun: boolean;
@@ -19,6 +19,7 @@ export interface RestoreSummary {
   foldersCreated: number;
   usersCreated: number;
   usersMatched: number;
+  kanbans: { inFile: number; created: number; skipped: number; failed: { partCode: string; error: string }[] };
 }
 
 export interface BackupJob {
@@ -34,8 +35,8 @@ export interface BackupJob {
   finishedAt: string | null;
   /** 0-100 overall progress. */
   percent: number;
-  total: { sops: number; media: number };
-  done: { sops: number; media: number };
+  total: { sops: number; kanbans: number; media: number };
+  done: { sops: number; kanbans: number; media: number };
   /** Export: bytes written to the file so far. Restore: bytes of media processed. */
   bytes: number;
   /** What is being worked on right now (SOP name / file name). */
@@ -43,7 +44,7 @@ export interface BackupJob {
   warnings: string[];
   error: string | null;
   /** Export result. */
-  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; media: number } } | null;
+  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; kanbans: number; media: number } } | null;
   /** Restore result. */
   summary: RestoreSummary | null;
   /** Source file name for a restore. */
@@ -86,8 +87,8 @@ export class BackupJobs {
       startedAt: new Date().toISOString(),
       finishedAt: null,
       percent: 0,
-      total: { sops: 0, media: 0 },
-      done: { sops: 0, media: 0 },
+      total: { sops: 0, kanbans: 0, media: 0 },
+      done: { sops: 0, kanbans: 0, media: 0 },
       bytes: 0,
       current: null,
       warnings: [],
@@ -109,10 +110,10 @@ export class BackupJobs {
     else if (job.warnings.length === MAX_WARNINGS) job.warnings.push('…further warnings omitted');
   }
 
-  /** sops + media + one final step count as the units of an export's progress bar. */
+  /** sops + kanbans + media + one final step count as the units of the progress bar. */
   setPercent(job: BackupJob, finalizingDone = false): void {
-    const total = job.total.sops + job.total.media + 1;
-    const done = job.done.sops + job.done.media + (finalizingDone ? 1 : 0);
+    const total = job.total.sops + job.total.kanbans + job.total.media + 1;
+    const done = job.done.sops + job.done.kanbans + job.done.media + (finalizingDone ? 1 : 0);
     job.percent = Math.min(100, Math.floor((done / Math.max(1, total)) * 100));
   }
 

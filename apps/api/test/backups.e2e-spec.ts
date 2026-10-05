@@ -162,6 +162,36 @@ async function snapshot(orgId: string) {
   );
 }
 
+/** Everything about an org's kanbans that a backup must preserve. */
+async function kanbanSnapshot(orgId: string) {
+  const rows = await ctx.prisma.kanban.findMany({
+    where: { organizationId: orgId, deletedAt: null },
+    orderBy: { partCode: 'asc' },
+    include: { picture: true, orderingSop: true, media: { include: { mediaAsset: true } } },
+  });
+  return Promise.all(
+    rows.map(async (k) => ({
+      partCode: k.partCode,
+      partDescription: k.partDescription,
+      supplier: k.supplier,
+      supplierPartNo: k.supplierPartNo,
+      orderQty: k.orderQty,
+      price: k.price?.toFixed(2) ?? null,
+      carriage: k.carriage?.toFixed(2) ?? null,
+      orderingType: k.orderingType,
+      orderingUrl: k.orderingUrl,
+      orderingSop: k.orderingSop?.referenceNo ?? null,
+      tag: k.tag,
+      color: k.color,
+      template: k.template,
+      createdAt: k.createdAt.toISOString(),
+      updatedAt: k.updatedAt.toISOString(),
+      picture: k.picture ? sha(await storage.get(k.picture.storageKey)) : null,
+      extraImages: (await Promise.all(k.media.map(async (m) => sha(await storage.get(m.mediaAsset.storageKey))))).sort(),
+    })),
+  );
+}
+
 describe('backup & restore', () => {
   let source: { zip: Buffer; job: any };
 
@@ -195,6 +225,17 @@ describe('backup & restore', () => {
     await ctx.prisma.sop.update({ where: { id: alpha.sopId }, data: { referenceNo: '232', createdAt: new Date('2025-01-02T00:00:00Z'), updatedAt: new Date('2025-02-03T00:00:00Z') } });
     await ctx.prisma.sop.update({ where: { id: beta.sopId }, data: { referenceNo: '231', createdAt: new Date('2025-01-01T00:00:00Z'), updatedAt: new Date('2025-01-01T00:00:00Z') } });
 
+    // Kanbans: one ordering from an SOP with a picture + extra image + prices, one plain URL kanban with no picture
+    const img3 = await uploadMedia(a, Buffer.concat([PNG_1PX, Buffer.from('third-image')]), 'three.png');
+    const k1 = await ctx
+      .http()
+      .post('/api/kanbans')
+      .set(as(a, 'EDITOR'))
+      .send({ partCode: 'K-100', partDescription: 'Bearing 6204', supplier: 'ACME', supplierPartNo: 'A-1', orderQty: '100 PCS', pictureAssetId: img1, mediaAssetIds: [img3], orderingType: 'sop', orderingSopId: alpha.sopId, price: 12.5, carriage: 1.25, template: '02', tag: 'bearings', color: '#D0F0C0' })
+      .expect(201);
+    await ctx.http().post('/api/kanbans').set(as(a, 'EDITOR')).send({ partCode: 'K-200', orderingType: 'url', orderingUrl: 'https://example.test/order' }).expect(201);
+    await ctx.prisma.kanban.update({ where: { id: k1.body.id }, data: { createdAt: new Date('2025-03-04T00:00:00Z'), updatedAt: new Date('2025-03-05T00:00:00Z') } });
+
     source = await exportBackup(a);
   });
 
@@ -209,36 +250,43 @@ describe('backup & restore', () => {
   });
 
   it('writes a manifest, every SOP, and every image with a matching checksum', async () => {
-    expect(source.job.file.counts).toEqual({ sops: 4, versions: 5, steps: 7, media: 2 });
+    expect(source.job.file.counts).toEqual({ sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3 });
     expect(source.job.warnings).toEqual([]);
     expect(source.job.percent).toBe(100);
 
     const zip = await openZip(source.zip);
     const manifest = await zip.readJson<any>('manifest.json', 1e6);
-    expect(manifest).toMatchObject({ format: 'gembadocs-sop-backup', formatVersion: 1, counts: { sops: 4, versions: 5, steps: 7, media: 2 } });
+    expect(manifest).toMatchObject({ format: 'gembadocs-sop-backup', formatVersion: 1, counts: { sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3 }, files: { kanbans: 'kanbans.json' } });
     expect(manifest.files.sops).toHaveLength(4);
     const media = await zip.readJson<any[]>('media.json', 1e6);
-    expect(media.map((m) => m.originalFilename).sort()).toEqual(['one.png', 'two.png']);
+    expect(media.map((m) => m.originalFilename).sort()).toEqual(['one.png', 'three.png', 'two.png']);
     for (const m of media) expect(sha(await zip.read(m.file, 1e7))).toBe(m.sha256);
     const sops = await Promise.all(manifest.files.sops.map((f: string) => zip.readJson<any>(f, 1e6)));
     // newest first, exactly like the list; each SOP carries all its versions
     expect(sops.map((s) => s.name)).toEqual(['Delta', 'Gamma', 'Alpha', 'Beta']);
     expect(sops.find((s) => s.name === 'Alpha').versions.map((v: any) => v.versionSequence)).toEqual([1, 2]);
+    const kanbans = await zip.readJson<any[]>('kanbans.json', 1e6);
+    expect(kanbans.map((k) => k.partCode)).toEqual(['K-200', 'K-100']); // newest first
+    expect(kanbans.find((k) => k.partCode === 'K-100')).toMatchObject({ price: '12.50', carriage: '1.25', orderingType: 'sop', template: '02', mediaAssetIds: expect.any(Array) });
     zip.close();
   });
 
   it('restores into another organization exactly as it was', async () => {
     const before = await snapshot(a.organizationId);
+    const beforeKanbans = await kanbanSnapshot(a.organizationId);
     const job = await restore(b, source.zip, false);
     expect(job.status).toBe('done');
-    expect(job.summary).toMatchObject({ dryRun: false, created: 4, versions: 5, steps: 7, mediaCreated: 2 });
+    expect(job.summary).toMatchObject({ dryRun: false, created: 4, versions: 5, steps: 7, mediaCreated: 3, kanbans: { inFile: 2, created: 2, skipped: 0, failed: [] } });
     expect(job.summary.failed).toEqual([]);
     expect(job.summary.skipped).toEqual([]);
     expect(job.percent).toBe(100);
 
     expect(await snapshot(b.organizationId)).toEqual(before);
+    expect(await kanbanSnapshot(b.organizationId)).toEqual(beforeKanbans);
+    expect((await kanbanSnapshot(b.organizationId)).find((k) => k.partCode === 'K-100')).toMatchObject({ orderingSop: '232', price: '12.50', picture: sha(PNG_1PX) });
     // the source organization is untouched
     expect(await snapshot(a.organizationId)).toEqual(before);
+    expect(await kanbanSnapshot(a.organizationId)).toEqual(beforeKanbans);
 
     const restored = await ctx.prisma.sop.findMany({ where: { organizationId: b.organizationId }, include: { currentPublishedVersion: true, latestDraftVersion: true } });
     const byName = Object.fromEntries(restored.map((s) => [s.name, s]));
@@ -248,7 +296,7 @@ describe('backup & restore', () => {
     expect(byName.Delta.status).toBe('archived');
     // restored images belong to the new organization and are readable through it
     const assets = await ctx.prisma.mediaAsset.findMany({ where: { organizationId: b.organizationId } });
-    expect(assets).toHaveLength(2);
+    expect(assets).toHaveLength(3);
     expect(assets.every((m) => m.storageKey.startsWith(`org/${b.organizationId}/`))).toBe(true);
     // QR tokens are globally unique, so the copy gets fresh ones
     const tokens = (await ctx.prisma.sop.findMany({ select: { qrPublicToken: true } })).map((s) => s.qrPublicToken);
@@ -264,9 +312,10 @@ describe('backup & restore', () => {
     const job = await restore(c, source.zip, true);
     expect(job.status).toBe('done');
     expect(job.dryRun).toBe(true);
-    expect(job.summary).toMatchObject({ dryRun: true, created: 4, failed: [] });
+    expect(job.summary).toMatchObject({ dryRun: true, created: 4, failed: [], kanbans: { created: 2 } });
     expect(await ctx.prisma.sop.count({ where: { organizationId: c.organizationId } })).toBe(0);
     expect(await ctx.prisma.mediaAsset.count({ where: { organizationId: c.organizationId } })).toBe(0);
+    expect(await ctx.prisma.kanban.count({ where: { organizationId: c.organizationId } })).toBe(0);
   });
 
   it('skips SOPs that already exist instead of duplicating them', async () => {
@@ -274,8 +323,10 @@ describe('backup & restore', () => {
     const job = await restore(b, source.zip, false);
     expect(job.summary.created).toBe(0);
     expect(job.summary.skipped).toHaveLength(4);
+    expect(job.summary.kanbans).toMatchObject({ created: 0, skipped: 2 });
     expect(job.summary.skipped[0].reason).toMatch(/already exists/);
     expect(await ctx.prisma.sop.count({ where: { organizationId: b.organizationId } })).toBe(before);
+    expect(await ctx.prisma.kanban.count({ where: { organizationId: b.organizationId } })).toBe(2);
   });
 
   it('keeps people distinct when their emails are free, and never grants more than the lowest role', async () => {
@@ -306,12 +357,17 @@ describe('backup & restore', () => {
       files.set(alphaFile, Buffer.from(JSON.stringify(alpha)));
       const betaFile = manifest.files.sops.find((f: string) => f.includes('231'));
       files.set(betaFile, Buffer.from('{ this is not json'));
+      const kanbans = JSON.parse(files.get('kanbans.json')!.toString());
+      kanbans[0].template = 'bogus'; // one unreadable kanban must not stop the others
+      files.set('kanbans.json', Buffer.from(JSON.stringify(kanbans)));
     });
     const job = await restore(c, tampered, false);
     expect(job.status).toBe('done');
     expect(job.summary.failed).toHaveLength(1);
     expect(job.summary.failed[0].referenceNo).toMatch(/231/);
     expect(job.summary.created).toBe(3);
+    expect(job.summary.kanbans).toMatchObject({ inFile: 2, created: 1 });
+    expect(job.summary.kanbans.failed).toHaveLength(1);
     expect(job.warnings.join('\n')).toMatch(/not restored: checksum does not match/);
     const steps = await ctx.prisma.sopStep.findMany({ where: { organizationId: c.organizationId } });
     expect(steps.some((s) => /<script|onerror/i.test(s.description))).toBe(false);

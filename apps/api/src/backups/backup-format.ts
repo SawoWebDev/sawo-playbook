@@ -6,12 +6,13 @@
  *   users.json           the people referenced by the SOPs (creators, submitters, publishers, approvers)
  *   media.json           index of every image/file: id, original name, mime type, size, sha256, zip path
  *   sops/NNNN-<ref>.json one file per SOP: all its versions, steps, step↔media links, approvals and config
+ *   kanbans.json         every kanban with all its fields, picture and extra images (optional: absent in older backups)
  *   media/<id>.<ext>     the binary for each entry in media.json
  *
  * Ids inside the file are the source system's ids; a restore generates fresh ones and remaps every link.
  * ABANDONED (discarded) draft versions are not part of a backup.
  */
-export const BACKUP_FORMAT = 'gembadocs-sop-backup';
+export const BACKUP_FORMAT = 'gembadocs-sop-backup' /* file-format id: kept so older backups still restore */;
 export const BACKUP_FORMAT_VERSION = 1;
 
 export interface BackupFolder {
@@ -104,6 +105,39 @@ export interface BackupSop {
   versions: BackupVersion[];
 }
 
+export interface BackupKanban {
+  id: string;
+  /** Position in the source list (newest first). */
+  position: number;
+  partCode: string;
+  partDescription: string | null;
+  pictureAssetId: string | null;
+  supplier: string | null;
+  supplierPartNo: string | null;
+  usedFor: string | null;
+  orderWhen: string | null;
+  orderQty: string | null;
+  deliveryTime: string | null;
+  location: string | null;
+  price: string | null;
+  carriage: string | null;
+  customField1: string | null;
+  customField2: string | null;
+  orderingType: 'url' | 'sop' | 'email';
+  orderingUrl: string | null;
+  orderingSopId: string | null;
+  orderingEmail: string | null;
+  tag: string | null;
+  color: string | null;
+  barcode: string | null;
+  template: string;
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+  /** Extra images attached to the kanban (besides the picture). */
+  mediaAssetIds: string[];
+}
+
 export interface BackupManifest {
   format: typeof BACKUP_FORMAT;
   formatVersion: number;
@@ -111,8 +145,8 @@ export interface BackupManifest {
   createdBy: { name: string; email: string };
   organization: { name: string };
   source: { app: string };
-  counts: { folders: number; users: number; sops: number; versions: number; steps: number; media: number; mediaBytes: number };
-  files: { folders: string; users: string; media: string; sops: string[] };
+  counts: { folders: number; users: number; sops: number; versions: number; steps: number; media: number; mediaBytes: number; kanbans?: number };
+  files: { folders: string; users: string; media: string; sops: string[]; kanbans?: string };
   warnings: string[];
 }
 
