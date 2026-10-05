@@ -70,8 +70,8 @@ export default function KioskPage() {
   return (
     <>
       <SubbarLeft>
-        <Link href={`/sops/${id}`} className="back">
-          ‹ <span>Back</span>
+        <Link href={`/sops/${id}`} className="back-btn">
+          <span className="back-chev">‹</span> Back
         </Link>
         <strong className="bar-title">{sop.name}</strong>
       </SubbarLeft>
@@ -100,10 +100,12 @@ export default function KioskPage() {
                   ))}
                 </div>
               )}
-              <div className="kiosk-planned">
-                <span>Planned Time:</span>
-                <strong>{clock(step.plannedTimeSeconds)}</strong>
-              </div>
+              {Math.round(step.plannedTimeSeconds) > 0 && (
+                <div className="kiosk-planned">
+                  <span>Planned Time:</span>
+                  <strong>{clock(step.plannedTimeSeconds)}</strong>
+                </div>
+              )}
               <div className="kiosk-desclabel">Description</div>
               <div className="rich kiosk-text" dangerouslySetInnerHTML={{ __html: step.description }} />
             </div>

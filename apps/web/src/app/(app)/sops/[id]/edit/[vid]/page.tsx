@@ -345,12 +345,12 @@ export default function SopEditorPage() {
       <div className="editor-head">
         <Link
           href="/sops"
-          className="back-link"
+          className="back-btn"
           onClick={(e) => {
             if (dirty && !confirm('Discard unsaved changes?')) e.preventDefault();
           }}
         >
-          ‹ Back
+          <span className="back-chev">‹</span> Back
         </Link>
         <strong>Edit {isAdvanced ? 'Advanced' : 'Standard'} Operation</strong>
         <Info tip="Changes are saved as a draft version. The published version stays unchanged until you Finish & Save." />
@@ -573,6 +573,10 @@ export default function SopEditorPage() {
                 </label>
                 <Info tip="Each step is shown to operators in order. Critical steps are highlighted in red." />
                 <div className="spacer" />
+                <label className="time-label" htmlFor={`time-${s.key}`}>
+                  Planned Time <Info tip="Hours:minutes:seconds. The SOP cycle time is the sum of all steps." />
+                </label>
+                <TimeInput id={`time-${s.key}`} seconds={s.plannedTimeSeconds} onChange={(v) => update(s.key, { plannedTimeSeconds: v })} />
                 <button type="button" className="icon-btn danger" title="Delete step" aria-label={`Delete step ${idx + 1}`} onClick={() => removeSteps(new Set([s.key]))}>
                   🗑
                 </button>
@@ -726,10 +730,6 @@ export default function SopEditorPage() {
                       ))}
                     </select>
                   )}
-                  <label className="time-label" htmlFor={`time-${s.key}`}>
-                    Planned Time <Info tip="Hours:minutes:seconds. The SOP cycle time is the sum of all steps." />
-                  </label>
-                  <TimeInput id={`time-${s.key}`} seconds={s.plannedTimeSeconds} onChange={(v) => update(s.key, { plannedTimeSeconds: v })} />
                 </div>
               </div>
             </div>

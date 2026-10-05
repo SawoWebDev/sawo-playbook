@@ -103,6 +103,28 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   return data as T;
 }
 
+/** Multipart upload with progress (fetch cannot report upload progress). Refreshes the session once on a 401. */
+export async function apiUpload<T = unknown>(path: string, form: FormData, onProgress?: (loaded: number, total: number) => void): Promise<T> {
+  const send = () =>
+    new Promise<{ status: number; text: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/api${path}`);
+      xhr.withCredentials = true;
+      if (accessToken) xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress?.(e.loaded, e.total);
+      };
+      xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+      xhr.onerror = () => reject(new Error('The upload was interrupted'));
+      xhr.send(form);
+    });
+  let res = await send();
+  if (res.status === 401 && (await refreshSession())) res = await send();
+  const data = res.text ? safeJson(res.text) : undefined;
+  if (res.status < 200 || res.status >= 300) throw new ApiError(res.status, data);
+  return data as T;
+}
+
 function safeJson(text: string): unknown {
   try {
     return JSON.parse(text);

@@ -10,6 +10,9 @@ import { errorMessage, fmtDate, fmtDateTime } from '@/lib/format';
 import { allowed } from '@/lib/permissions';
 import type { SopDetail, SopListItem, VersionDetail } from '@/lib/types';
 
+/** The subset of a SOP the dialogs need, so they work from both the list (SopListItem) and the detail page (SopDetail). */
+export type SopRef = Pick<SopListItem, 'id' | 'name' | 'referenceNo' | 'folder'>;
+
 type Dialog = 'training' | 'history' | 'folder' | 'changes' | null;
 
 interface HistoryRow {
@@ -146,7 +149,7 @@ export function SopCardMenu({
   );
 }
 
-function Item({ icon, label, note, danger, onClick }: { icon: ReactNode; label: string; note?: string; danger?: boolean; onClick?: () => void }) {
+export function Item({ icon, label, note, danger, onClick }: { icon: ReactNode; label: string; note?: string; danger?: boolean; onClick?: () => void }) {
   return (
     <button type="button" className={danger ? 'danger' : undefined} disabled={!onClick} onClick={onClick}>
       {icon}
@@ -156,7 +159,7 @@ function Item({ icon, label, note, danger, onClick }: { icon: ReactNode; label: 
   );
 }
 
-function DialogHead({ title, sop }: { title: string; sop: SopListItem }) {
+function DialogHead({ title, sop }: { title: string; sop: SopRef }) {
   return (
     <>
       <h3 style={{ margin: '0 0 2px' }}>{title}</h3>
@@ -167,7 +170,7 @@ function DialogHead({ title, sop }: { title: string; sop: SopListItem }) {
   );
 }
 
-function FolderDialog({ sop, folders, onClose }: { sop: SopListItem; folders: { id: string; name: string; depth: number }[]; onClose: (notice?: string) => void }) {
+export function FolderDialog({ sop, folders, onClose }: { sop: SopRef; folders: { id: string; name: string; depth: number }[]; onClose: (notice?: string) => void }) {
   const [folderId, setFolderId] = useState(sop.folder?.id ?? '');
   const [error, setError] = useState<string | null>(null);
   return (
@@ -351,7 +354,7 @@ const STATE_LABEL: Record<string, string> = {
   ABANDONED: 'Discarded',
 };
 
-function ChangeHistory({ sop, onClose }: { sop: SopListItem; onClose: () => void }) {
+export function ChangeHistory({ sop, onClose }: { sop: SopRef; onClose: () => void }) {
   const [detail, setDetail] = useState<SopDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -371,7 +374,9 @@ function ChangeHistory({ sop, onClose }: { sop: SopListItem; onClose: () => void
                 <th>Version</th>
                 <th>Status</th>
                 <th>Created</th>
+                <th>Created by</th>
                 <th>Published</th>
+                <th>Published by</th>
                 <th>Change summary</th>
                 <th />
               </tr>
@@ -385,7 +390,9 @@ function ChangeHistory({ sop, onClose }: { sop: SopListItem; onClose: () => void
                   </td>
                   <td>{STATE_LABEL[v.lifecycleState] ?? v.lifecycleState}</td>
                   <td>{fmtDate(v.createdAt)}</td>
+                  <td>{v.createdByName ?? '—'}</td>
                   <td>{v.publishedAt ? fmtDate(v.publishedAt) : '—'}</td>
+                  <td>{v.publishedByName ?? '—'}</td>
                   <td>{v.changeSummary || <span className="muted">—</span>}</td>
                   <td>
                     <Link href={`/sops/${sop.id}?v=${v.id}`}>View</Link>

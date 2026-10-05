@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { AdvancedOptions } from '@/components/AdvancedOptions';
+import { ChangeHistory, FolderDialog, Item } from '@/components/SopCardMenu';
 import { SopStatusBadge, VersionStateBadge } from '@/components/StatusBadge';
 import { StepsView } from '@/components/StepsView';
 import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
@@ -11,6 +12,7 @@ import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate, fmtDateTime, fmtDuration, plural } from '@/lib/format';
 import { allowed } from '@/lib/permissions';
+import { buildTree, flatten, type FolderRow } from '@/lib/folders';
 import type { ApprovalHistory, SopDetail, VersionDetail } from '@/lib/types';
 
 export default function SopDetailPage() {
@@ -35,6 +37,8 @@ function SopDetailView() {
   const [busy, setBusy] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [more, setMore] = useState(false);
+  const [dialog, setDialog] = useState<'folder' | 'changes' | null>(null);
+  const [folders, setFolders] = useState<FolderRow[]>([]);
 
   const selected = search.get('v');
 
@@ -64,6 +68,10 @@ function SopDetailView() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    api<FolderRow[]>('/folders').then(setFolders).catch(() => undefined);
+  }, []);
+
   async function act(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
     setError(null);
@@ -76,6 +84,19 @@ function SopDetailView() {
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function duplicate() {
+    setMore(false);
+    setBusy(true);
+    setError(null);
+    try {
+      const copy = await api<SopDetail>(`/sops/${id}/duplicate`, { method: 'POST' });
+      router.push(copy.activeVersionId ? `/sops/${copy.id}/edit/${copy.activeVersionId}` : `/sops/${copy.id}`);
+    } catch (e) {
+      setError(errorMessage(e));
       setBusy(false);
     }
   }
@@ -121,8 +142,8 @@ function SopDetailView() {
   return (
     <>
       <SubbarLeft>
-        <Link href="/sops" className="back">
-          ‹ <span>Back</span>
+        <Link href="/sops" className="back-btn">
+          <span className="back-chev">‹</span> Back
         </Link>
         <strong className="bar-title">{sop.name}</strong>
       </SubbarLeft>
@@ -156,7 +177,27 @@ function SopDetailView() {
             ⋮
           </button>
           {more && (
-            <div className="menu-list more-menu" onMouseLeave={() => setMore(false)}>
+            <div className="menu-list more-menu icon-menu" onMouseLeave={() => setMore(false)}>
+              {canEdit && <Item icon={Icons.copy} label="Duplicate" onClick={() => void duplicate()} />}
+              <Item icon={Icons.globe} label="Translate" note="coming soon" />
+              {canEdit && (
+                <Item
+                  icon={Icons.folder}
+                  label="Add to Folder"
+                  onClick={() => {
+                    setMore(false);
+                    setDialog('folder');
+                  }}
+                />
+              )}
+              <Item
+                icon={Icons.history}
+                label="Change History"
+                onClick={() => {
+                  setMore(false);
+                  setDialog('changes');
+                }}
+              />
               <div className="more-title">Versions</div>
               {sop.versions.map((sv) => (
                 <Link key={sv.id} href={`/sops/${id}?v=${sv.id}`} className="more-version" onClick={() => setMore(false)}>
@@ -190,6 +231,27 @@ function SopDetailView() {
           )}
         </div>
       </SubbarRight>
+
+      {dialog && (
+        <div className="dialog-backdrop" onClick={() => setDialog(null)}>
+          <div className="card dialog" style={{ maxWidth: dialog === 'folder' ? 460 : 820 }} onClick={(e) => e.stopPropagation()}>
+            {dialog === 'folder' && (
+              <FolderDialog
+                sop={sop}
+                folders={flatten(buildTree(folders))}
+                onClose={(n) => {
+                  setDialog(null);
+                  if (n) {
+                    setNotice(n);
+                    void load();
+                  }
+                }}
+              />
+            )}
+            {dialog === 'changes' && <ChangeHistory sop={sop} onClose={() => setDialog(null)} />}
+          </div>
+        </div>
+      )}
 
       <div className="layout-2">
         <div>

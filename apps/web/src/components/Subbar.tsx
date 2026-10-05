@@ -63,6 +63,15 @@ export const Icons = {
     </>,
   ),
   sort: icon(<path d="M7 4v16m0 0-3-3m3 3 3-3M13 6h8M13 11h6M13 16h4" />),
+  gridView: icon(
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </>,
+  ),
+  listView: icon(<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />),
   search: icon(
     <>
       <circle cx="11" cy="11" r="7" />

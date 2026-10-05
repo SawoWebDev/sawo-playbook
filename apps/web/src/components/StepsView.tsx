@@ -24,9 +24,7 @@ export function StepsView({ steps, showTitles }: { steps: Step[]; showTitles?: b
             <div className="step-head">
               <span className="step-label-view">Step {s.order}</span>
               {(showTitles || s.title) && s.title && <strong className="step-title">{s.title}</strong>}
-            </div>
-            <div className="step-time">
-              <span className="time-badge">{clock(s.plannedTimeSeconds)}</span>
+              {Math.round(s.plannedTimeSeconds) > 0 && <span className="time-badge">{clock(s.plannedTimeSeconds)}</span>}
             </div>
             <div className={`step-media${hasMedia ? '' : ' empty'}`}>
               {hasMedia &&

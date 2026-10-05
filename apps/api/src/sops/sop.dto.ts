@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -17,6 +18,8 @@ import {
 } from 'class-validator';
 
 export const CREATABLE_SOP_TYPES = ['standard', 'advanced'] as const;
+export const SOP_TYPES = ['standard', 'advanced', 'video', 'document'] as const;
+export const SOP_SORTS = ['oldest', 'newest', 'modified', 'alphabetical', 'reference'] as const;
 
 export class CreateSopDto {
   @IsString() @MinLength(1) @MaxLength(300) name!: string;
@@ -39,6 +42,10 @@ export class ListSopsQuery {
   @IsOptional() @IsIn(['draft', 'pending_approval', 'approved', 'published', 'archived']) status?: string;
   @IsOptional() @IsString() folderId?: string; // uuid or "root"
   @IsOptional() @IsIn(['true', 'false']) includeSubfolders?: 'true' | 'false';
+  @IsOptional() @IsIn(SOP_TYPES) type?: (typeof SOP_TYPES)[number];
+  @IsOptional() @IsIn(['true', 'false']) checklistOnly?: 'true' | 'false';
+  @IsOptional() @IsString() @MaxLength(2000) createdBy?: string; // comma-separated user ids
+  @IsOptional() @IsIn(SOP_SORTS) sort?: (typeof SOP_SORTS)[number];
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) offset?: number;
 }
@@ -92,4 +99,19 @@ export class StepInput {
 
 export class SaveStepsDto {
   @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => StepInput) steps!: StepInput[];
+}
+
+export class BulkImportSopsDto {
+  @IsString() @MaxLength(2_000_000) csv!: string;
+  @IsOptional() @IsBoolean() dryRun?: boolean;
+}
+
+class SopBulkPatch {
+  @IsOptional() @IsUUID() folderId?: string | null;
+  @IsOptional() @IsBoolean() archived?: boolean;
+}
+
+export class SopBulkEditDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[];
+  @ValidateNested() @Type(() => SopBulkPatch) patch!: SopBulkPatch;
 }

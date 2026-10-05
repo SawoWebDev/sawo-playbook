@@ -30,6 +30,8 @@ export const AuditAction = {
   KanbanBulkImport: 'kanban.bulk.import',
   KanbanBulkEdit: 'kanban.bulk.edit',
   SkillAssessed: 'skills.assessed',
+  BackupExported: 'backup.exported',
+  BackupRestored: 'backup.restored',
 } as const;
 export type AuditActionName = (typeof AuditAction)[keyof typeof AuditAction];
 

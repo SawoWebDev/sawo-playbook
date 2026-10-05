@@ -589,6 +589,136 @@ describe('PDF export', () => {
   }, 60_000);
 });
 
+describe('bulk import / export (CSV)', () => {
+  it('import is all-or-nothing and reports row errors', async () => {
+    const bad = 'name,type\nOK-1,standard\n,standard\nOK-2,not-a-type\n';
+    const r1 = await ctx.http().post('/api/sops/bulk/import').set(as(a, 'EDITOR')).send({ csv: bad }).expect(200);
+    expect(r1.body.imported).toBe(0);
+    expect(r1.body.errors.map((e: { row: number }) => e.row)).toEqual([3, 4]);
+    expect(await ctx.prisma.sop.count({ where: { organizationId: a.organizationId, name: 'OK-1' } })).toBe(0);
+  });
+
+  it('valid import creates every row (auto- and explicit reference numbers, folder lookup) and is a draft ready to edit', async () => {
+    const folder = await ctx.http().post('/api/folders').set(as(a, 'EDITOR')).send({ name: 'Import target' }).expect(201);
+    const csv = [
+      'name,reference_no,type,folder',
+      'Clean the line,,standard,Import target',
+      'Advanced proc,IMP-REF-1,advanced,',
+    ].join('\n');
+    const dry = await ctx.http().post('/api/sops/bulk/import').set(as(a, 'EDITOR')).send({ csv, dryRun: true }).expect(200);
+    expect(dry.body).toMatchObject({ imported: 0, valid: 2, errors: [] });
+    expect(await ctx.prisma.sop.count({ where: { organizationId: a.organizationId, name: 'Clean the line' } })).toBe(0);
+
+    const r = await ctx.http().post('/api/sops/bulk/import').set(as(a, 'EDITOR')).send({ csv }).expect(200);
+    expect(r.body.imported).toBe(2);
+    const inFolder = await ctx.prisma.sop.findFirstOrThrow({ where: { organizationId: a.organizationId, name: 'Clean the line' } });
+    expect(inFolder.folderId).toBe(folder.body.id);
+    const advanced = await ctx.prisma.sop.findFirstOrThrow({ where: { organizationId: a.organizationId, referenceNo: 'IMP-REF-1' } });
+    expect(advanced.type).toBe('advanced');
+
+    await ctx.http().post('/api/sops/bulk/import').set(as(a, 'OPERATOR')).send({ csv: 'name\nNope\n' }).expect(403);
+  });
+
+  it('rejects a reference number that already exists or repeats within the file', async () => {
+    const { body } = await createSop(a, 'Existing');
+    const existingRef = (await ctx.prisma.sop.findUniqueOrThrow({ where: { id: body.id } })).referenceNo;
+    const dupeInFile = `name,reference_no\nA,SAME-1\nB,SAME-1\n`;
+    const r1 = await ctx.http().post('/api/sops/bulk/import').set(as(a, 'EDITOR')).send({ csv: dupeInFile }).expect(200);
+    expect(r1.body.errors).toHaveLength(2); // both rows sharing the duplicated reference are reported
+    const clash = `name,reference_no\nC,${existingRef}\n`;
+    const r2 = await ctx.http().post('/api/sops/bulk/import').set(as(a, 'EDITOR')).send({ csv: clash }).expect(200);
+    expect(r2.body.errors).toHaveLength(1);
+  });
+
+  it('export CSV round-trips headers and neutralises formula injection', async () => {
+    await createSop(a, '=HYPERLINK("x")');
+    const r = await ctx.http().get('/api/sops/export.csv').set(as(a, 'OPERATOR')).expect(200);
+    expect(r.text.split('\r\n')[0]).toBe('reference_no,name,type,status,folder,created_by,created_at,updated_at');
+    expect(r.text).toContain(`"'=HYPERLINK(""x"")"`);
+  });
+});
+
+describe('list: sort, filters and creator facets', () => {
+  it('sort options order by the expected field', async () => {
+    await createSop(a, 'Zebra sort test');
+    await createSop(a, 'Alpha sort test');
+    const alpha = await ctx.http().get('/api/sops?search=sort test&sort=alphabetical').set(as(a, 'OPERATOR')).expect(200);
+    const names = alpha.body.items.map((i: { name: string }) => i.name);
+    expect(names.indexOf('Alpha sort test')).toBeLessThan(names.indexOf('Zebra sort test'));
+
+    const newest = await ctx.http().get('/api/sops?search=sort test&sort=newest').set(as(a, 'OPERATOR')).expect(200);
+    expect(newest.body.items[0].name).toBe('Alpha sort test'); // created after Zebra
+
+    const oldest = await ctx.http().get('/api/sops?search=sort test&sort=oldest').set(as(a, 'OPERATOR')).expect(200);
+    expect(oldest.body.items[0].name).toBe('Zebra sort test');
+  });
+
+  it('filters by type and by creator, and returns a stable creator facet list', async () => {
+    const adv = await ctx.http().post('/api/sops').set(as(a, 'EDITOR')).send({ name: 'Adv filter test', type: 'advanced' }).expect(201);
+    await ctx.http().post('/api/sops').set(a.reviewer.auth).send({ name: 'Reviewer std filter test' }).expect(201);
+
+    const typeFiltered = await ctx.http().get('/api/sops?search=filter test&type=advanced').set(as(a, 'OPERATOR')).expect(200);
+    expect(typeFiltered.body.items.map((i: { id: string }) => i.id)).toEqual([adv.body.id]);
+
+    const reviewerId = a.reviewer.user.id;
+    const byCreator = await ctx.http().get(`/api/sops?search=filter test&createdBy=${reviewerId}`).set(as(a, 'OPERATOR')).expect(200);
+    expect(byCreator.body.items.length).toBeGreaterThan(0);
+    expect(byCreator.body.items.every((i: { createdBy: { id: string } }) => i.createdBy.id === reviewerId)).toBe(true);
+    expect(byCreator.body.facets.creators.some((c: { id: string }) => c.id === reviewerId)).toBe(true);
+
+    // reviewer only has standard SOPs here — a type=advanced filter excludes all of them, but the
+    // facet roster (independent of the current filters) still lists reviewer as a creator.
+    const narrowed = await ctx.http().get('/api/sops?search=filter test&type=advanced').set(as(a, 'OPERATOR')).expect(200);
+    expect(narrowed.body.items.some((i: { createdBy: { id: string } }) => i.createdBy.id === reviewerId)).toBe(false);
+    expect(narrowed.body.facets.creators.some((c: { id: string }) => c.id === reviewerId)).toBe(true);
+  });
+
+  it('checklistOnly matches SOPs whose draft or published config has checklist_sop enabled', async () => {
+    const { sopId, versionId } = await createSop(a, 'Checklist filter test');
+    const none = await ctx.http().get('/api/sops?search=checklist filter test&checklistOnly=true').set(as(a, 'OPERATOR')).expect(200);
+    expect(none.body.items).toHaveLength(0);
+
+    await ctx.http().patch(`/api/sops/${sopId}/versions/${versionId}`).set(as(a, 'EDITOR')).send({ config: { checklist_sop: true } }).expect(200);
+    const some = await ctx.http().get('/api/sops?search=checklist filter test&checklistOnly=true').set(as(a, 'OPERATOR')).expect(200);
+    expect(some.body.items.map((i: { id: string }) => i.id)).toEqual([sopId]);
+  });
+});
+
+describe('bulk edit (folder move / archive)', () => {
+  it('moves a selection to a folder and is role-gated', async () => {
+    const s1 = await createSop(a, 'Bulk edit 1');
+    const s2 = await createSop(a, 'Bulk edit 2');
+    const folder = await ctx.http().post('/api/folders').set(as(a, 'EDITOR')).send({ name: 'Bulk target' }).expect(201);
+
+    await ctx.http().patch('/api/sops/bulk').set(as(a, 'OPERATOR')).send({ ids: [s1.sopId], patch: { folderId: folder.body.id } }).expect(403);
+
+    const r = await ctx.http().patch('/api/sops/bulk').set(as(a, 'EDITOR')).send({ ids: [s1.sopId, s2.sopId], patch: { folderId: folder.body.id } }).expect(200);
+    expect(r.body.updated).toBe(2);
+    expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: s1.sopId } })).folderId).toBe(folder.body.id);
+    expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: s2.sopId } })).folderId).toBe(folder.body.id);
+  });
+
+  it('bulk archives and unarchives, recomputing status', async () => {
+    const { sopId } = await publishedSop(a, 'Bulk archive test');
+    const r = await ctx.http().patch('/api/sops/bulk').set(as(a, 'EDITOR')).send({ ids: [sopId], patch: { archived: true } }).expect(200);
+    expect(r.body.updated).toBe(1);
+    expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).status).toBe('archived');
+
+    await ctx.http().patch('/api/sops/bulk').set(as(a, 'EDITOR')).send({ ids: [sopId], patch: { archived: false } }).expect(200);
+    expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).status).toBe('published');
+  });
+
+  it('rejects an empty patch and 404s when any id is missing or cross-tenant', async () => {
+    const { sopId } = await createSop(a, 'Bulk empty patch test');
+    await ctx.http().patch('/api/sops/bulk').set(as(a, 'EDITOR')).send({ ids: [sopId], patch: {} }).expect(400);
+
+    const bSop = await createSop(b, 'Tenant B bulk target');
+    await expectCrossTenantNotFound(() =>
+      ctx.http().patch('/api/sops/bulk').set(as(b, 'OWNER')).send({ ids: [bSop.sopId, sopId], patch: { archived: true } }),
+    );
+  });
+});
+
 describe('cross-tenant isolation — SOP endpoints (§8 Phase 1 / 1.5)', () => {
   it('tenant B gets 404 on every read and write of tenant A’s SOP, versions, steps and approvals', async () => {
     const { sopId, versionId } = await publishedSop(a, 'Secret');
@@ -623,5 +753,11 @@ describe('cross-tenant isolation — SOP endpoints (§8 Phase 1 / 1.5)', () => {
     const untouched = await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } });
     expect(untouched.name).toBe('Secret');
     expect((await ctx.prisma.sopStep.findFirstOrThrow({ where: { sopVersionId: draftV } })).description).toBe('x');
+
+    const exp = await ctx.http().get('/api/sops/export.csv').set(B).expect(200);
+    expect(exp.text).not.toContain('Secret');
+    const folder = await ctx.http().post('/api/folders').set(as(a, 'EDITOR')).send({ name: 'A-only folder' }).expect(201);
+    const imp = await ctx.http().post('/api/sops/bulk/import').set(B).send({ csv: `name,folder\nx,${folder.body.name}\n` }).expect(200);
+    expect(imp.body.errors).toHaveLength(1); // B cannot see A's folder
   });
 });

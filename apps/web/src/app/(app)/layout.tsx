@@ -28,6 +28,7 @@ const TABS: NavItem[] = [
 const ADMIN: NavItem[] = [
   { href: '/users', label: 'Manage Users', cap: 'manageUsers' },
   { href: '/settings', label: 'Organization', cap: 'manageSettings' },
+  { href: '/backups', label: 'Backups', cap: 'manageSettings' },
   { href: '/audit', label: 'Audit Log', cap: 'viewAudit' },
 ];
 
@@ -65,7 +66,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <header className="topbar">
         <Link href="/sops" className="logo" aria-label="SAWO GembaDocs home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/assets/images/sawo-logo.webp" alt="SAWO" width={479} height={300} />
+          <img src="/assets/images/sawo-logo.webp" alt="SAWO" width={400} height={255} />
         </Link>
         <div className="spacer" />
         {!showBar && (

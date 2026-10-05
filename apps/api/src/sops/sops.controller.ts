@@ -6,7 +6,7 @@ import { AuthUser } from '../common/auth-user';
 import { CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
 import { PdfService } from './pdf.service';
-import { CreateSopDto, ListSopsQuery, SaveStepsDto, UpdateSopDto, UpdateVersionDto } from './sop.dto';
+import { BulkImportSopsDto, CreateSopDto, ListSopsQuery, SaveStepsDto, SopBulkEditDto, UpdateSopDto, UpdateVersionDto } from './sop.dto';
 import { SopWorkflowService } from './sop-workflow.service';
 import { SopsService } from './sops.service';
 
@@ -35,6 +35,28 @@ export class SopsController {
   @RequirePermission(Permission.SopView)
   list(@CurrentUser() actor: AuthUser, @Query() q: ListSopsQuery) {
     return this.sops.list(actor, q);
+  }
+
+  @Get('export.csv')
+  @RequirePermission(Permission.SopView)
+  async exportCsv(@CurrentUser() actor: AuthUser, @Res({ passthrough: true }) res: Response) {
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="sops.csv"' });
+    return this.sops.exportCsv(actor);
+  }
+
+  @Post('bulk/import')
+  @HttpCode(200)
+  @RequirePermission(Permission.SopEdit)
+  @TrackActivity({ event: 'sop.imported', entity: 'sop' })
+  bulkImport(@CurrentUser() actor: AuthUser, @Body() dto: BulkImportSopsDto) {
+    return this.sops.bulkImportCsv(actor, dto);
+  }
+
+  @Patch('bulk')
+  @RequirePermission(Permission.SopEdit)
+  @TrackActivity({ event: 'sop.bulk_edited', entity: 'sop' })
+  bulkEdit(@CurrentUser() actor: AuthUser, @Body() dto: SopBulkEditDto) {
+    return this.sops.bulkEdit(actor, dto);
   }
 
   @Post()

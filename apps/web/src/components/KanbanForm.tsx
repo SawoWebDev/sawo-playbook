@@ -187,8 +187,8 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
   return (
     <>
       <SubbarLeft>
-        <Link href="/kanbans" className="back">
-          ‹ <span>Back</span>
+        <Link href="/kanbans" className="back-btn">
+          <span className="back-chev">‹</span> Back
         </Link>
         <strong className="bar-title">{kanban ? `Edit Kanban — ${kanban.partCode}` : copyFrom ? `Duplicate Kanban — ${copyFrom.partCode}` : 'Add Kanban'}</strong>
       </SubbarLeft>

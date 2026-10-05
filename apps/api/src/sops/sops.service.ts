@@ -2,15 +2,18 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { OrgRole, Prisma, Sop } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuthUser } from '../common/auth-user';
+import { csvCell, parseCsvWithHeader } from '../common/csv';
 import { FoldersService } from '../folders/folders.service';
 import { Permission, roleHasPermission } from '../common/permissions';
 import { MediaService, MediaView } from '../media/media.service';
 import { markAttached, reevaluateMedia } from '../media/media-lifecycle';
 import { isUniqueViolation, PrismaService, Tx } from '../prisma/prisma.service';
 import { sanitizeRichText } from './sanitize';
-import { CreateSopDto, ListSopsQuery, SaveStepsDto, UpdateSopDto, UpdateVersionDto } from './sop.dto';
+import { CREATABLE_SOP_TYPES, BulkImportSopsDto, CreateSopDto, ListSopsQuery, SaveStepsDto, SopBulkEditDto, UpdateSopDto, UpdateVersionDto } from './sop.dto';
 import { ACTIVE_UNPUBLISHED, recomputeSopStatus, versionLabel } from './sop-status';
 import { SopVersionRepository, StepWrite } from './sop-version.repository';
+
+export const SOP_CSV_COLUMNS = ['reference_no', 'name', 'type', 'status', 'folder', 'created_by', 'created_at', 'updated_at'] as const;
 
 type CopyableStep = Prisma.SopStepGetPayload<{ include: { media: true } }>;
 
@@ -105,12 +108,34 @@ export class SopsService {
         { referenceNo: { contains: term, mode: 'insensitive' } },
       ];
     }
+    if (q.type) where.type = q.type as Prisma.EnumSopTypeFilter['equals'];
+    if (q.createdBy?.trim()) {
+      const ids = [...new Set(q.createdBy.split(',').map((s) => s.trim()).filter(Boolean))];
+      if (ids.length) where.createdById = { in: ids };
+    }
+    if (q.checklistOnly === 'true') {
+      where.AND = [
+        {
+          OR: [
+            { currentPublishedVersion: { config: { path: ['checklist_sop'], equals: true } } },
+            { latestDraftVersion: { config: { path: ['checklist_sop'], equals: true } } },
+          ],
+        },
+      ];
+    }
+    const SORT: Record<string, Prisma.SopOrderByWithRelationInput> = {
+      oldest: { createdAt: 'asc' },
+      newest: { createdAt: 'desc' },
+      modified: { updatedAt: 'desc' },
+      alphabetical: { name: 'asc' },
+      reference: { referenceNo: 'asc' },
+    };
     const take = q.limit ?? 50;
-    const [total, rows, settings] = await Promise.all([
+    const [total, rows, settings, creatorRoster] = await Promise.all([
       this.prisma.sop.count({ where }),
       this.prisma.sop.findMany({
         where,
-        orderBy: { updatedAt: 'desc' },
+        orderBy: SORT[q.sort ?? ''] ?? SORT.modified,
         take,
         skip: q.offset ?? 0,
         include: {
@@ -120,6 +145,7 @@ export class SopsService {
         },
       }),
       this.prisma.organizationSettings.findUniqueOrThrow({ where: { organizationId: actor.organizationId } }),
+      this.creatorFacets(actor),
     ]);
 
     const creators = await this.prisma.user.findMany({
@@ -137,6 +163,7 @@ export class SopsService {
     const showDrafts = canSeeUnpublished(actor.role);
     return {
       total,
+      facets: { creators: creatorRoster },
       items: rows.map((r) => ({
         id: r.id,
         referenceNo: r.referenceNo,
@@ -164,6 +191,22 @@ export class SopsService {
             : null,
       })),
     };
+  }
+
+  /** Full creator roster for the "Created By" filter — independent of the current filters, so the list stays stable. */
+  private async creatorFacets(actor: AuthUser): Promise<{ id: string; name: string }[]> {
+    const where: Prisma.SopWhereInput = { organizationId: actor.organizationId, deletedAt: null };
+    if (!canSeeUnpublished(actor.role)) {
+      where.currentPublishedVersionId = { not: null };
+      where.archivedAt = null;
+    }
+    const rows = await this.prisma.sop.findMany({ where, distinct: ['createdById'], select: { createdById: true } });
+    if (!rows.length) return [];
+    return this.prisma.user.findMany({
+      where: { id: { in: rows.map((r) => r.createdById) }, organizationId: actor.organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   private async approvalCounts(versions: { id: string; currentApprovalRound: number }[]): Promise<Map<string, number>> {
@@ -212,12 +255,18 @@ export class SopsService {
           createdById: true,
           submittedAt: true,
           approvedAt: true,
+          publishedById: true,
           publishedAt: true,
         },
       }),
       sop.folderId ? this.prisma.folder.findFirst({ where: { id: sop.folderId, organizationId: actor.organizationId }, select: { id: true, name: true } }) : null,
       this.prisma.user.findFirst({ where: { id: sop.createdById, organizationId: actor.organizationId }, ...userBrief }),
     ]);
+    // names for the "Change History" dialog: who created / published each version
+    const authorIds = [...new Set(versions.flatMap((v) => [v.createdById, v.publishedById]).filter((x): x is string => !!x))];
+    const authors = new Map(
+      (await this.prisma.user.findMany({ where: { id: { in: authorIds }, organizationId: actor.organizationId }, select: { id: true, name: true } })).map((u) => [u.id, u.name]),
+    );
     return {
       id: sop.id,
       referenceNo: sop.referenceNo,
@@ -232,7 +281,12 @@ export class SopsService {
       currentPublishedVersionId: sop.currentPublishedVersionId,
       activeVersionId: showDrafts ? sop.latestDraftVersionId : null,
       qrPublicToken: sop.qrPublicToken,
-      versions: versions.map((v) => ({ ...v, label: versionLabel(v.versionSequence) })),
+      versions: versions.map(({ publishedById, ...v }) => ({
+        ...v,
+        label: versionLabel(v.versionSequence),
+        createdByName: authors.get(v.createdById) ?? null,
+        publishedByName: publishedById ? (authors.get(publishedById) ?? null) : null,
+      })),
     };
   }
 
@@ -426,6 +480,26 @@ export class SopsService {
     return this.get(actor, sopId);
   }
 
+  /** Bulk move-to-folder and/or archive/unarchive for a selection of SOPs. */
+  async bulkEdit(actor: AuthUser, dto: SopBulkEditDto) {
+    const ids = [...new Set(dto.ids)];
+    const { patch } = dto;
+    if (patch.folderId === undefined && patch.archived === undefined) throw new BadRequestException('Nothing to update');
+    if (patch.folderId) await this.assertFolder(actor, patch.folderId);
+    return this.prisma.$transaction(async (tx) => {
+      const owned = await tx.sop.count({ where: { id: { in: ids }, organizationId: actor.organizationId, deletedAt: null } });
+      if (owned !== ids.length) throw new NotFoundException('One or more SOPs not found');
+      if (patch.folderId !== undefined) {
+        await tx.sop.updateMany({ where: { id: { in: ids } }, data: { folderId: patch.folderId } });
+      }
+      if (patch.archived !== undefined) {
+        await tx.sop.updateMany({ where: { id: { in: ids } }, data: { archivedAt: patch.archived ? new Date() : null } });
+        for (const id of ids) await recomputeSopStatus(tx, id);
+      }
+      return { updated: ids.length };
+    });
+  }
+
   /**
    * Copy-on-write (Invariant #4): a new DRAFT seeded from the current published
    * version. Invariant #19 is enforced by the partial unique index — a
@@ -562,5 +636,111 @@ export class SopsService {
   /** Shared by workflow services. */
   recompute(tx: Tx, sopId: string) {
     return recomputeSopStatus(tx, sopId);
+  }
+
+  // ───────────────────────── bulk import / export ─────────────────────────
+
+  async exportCsv(actor: AuthUser): Promise<string> {
+    const where: Prisma.SopWhereInput = { organizationId: actor.organizationId, deletedAt: null };
+    if (!canSeeUnpublished(actor.role)) {
+      where.currentPublishedVersionId = { not: null };
+      where.archivedAt = null;
+    }
+    const rows = await this.prisma.sop.findMany({
+      where,
+      orderBy: { referenceNo: 'asc' },
+      include: { folder: { select: { name: true } } },
+    });
+    const creators = await this.prisma.user.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.createdById))] }, organizationId: actor.organizationId },
+      select: { id: true, name: true },
+    });
+    const creatorById = new Map(creators.map((c) => [c.id, c.name]));
+    const line = (r: (typeof rows)[number]) =>
+      [r.referenceNo, r.name, r.type, r.status, r.folder?.name, creatorById.get(r.createdById), r.createdAt.toISOString(), r.updatedAt.toISOString()]
+        .map(csvCell)
+        .join(',');
+    return [SOP_CSV_COLUMNS.join(','), ...rows.map(line)].join('\r\n') + '\r\n';
+  }
+
+  /**
+   * All-or-nothing CSV import: creates new SOPs (empty first draft, no steps) from name/reference/type/folder
+   * columns. Every row is validated first; nothing is written unless every row is valid. `dryRun` validates only.
+   */
+  async bulkImportCsv(actor: AuthUser, dto: BulkImportSopsDto) {
+    const rows = parseCsvWithHeader(dto.csv);
+    if (!rows.length) throw new BadRequestException('CSV has no data rows');
+    if (rows.length > 500) throw new BadRequestException('At most 500 rows per import');
+    if (!rows[0] || !('name' in rows[0].values)) throw new BadRequestException('CSV must include a "name" column');
+
+    const folders = await this.prisma.folder.findMany({ where: { organizationId: actor.organizationId, deletedAt: null }, select: { id: true, name: true } });
+    const folderByName = new Map(folders.map((f) => [f.name.trim().toLowerCase(), f.id]));
+
+    const refs = rows.map((r) => r.values.reference_no?.trim()).filter((r): r is string => !!r);
+    const dupeRefs = refs.filter((r, i) => refs.indexOf(r) !== i);
+    const existing = refs.length
+      ? await this.prisma.sop.findMany({ where: { organizationId: actor.organizationId, referenceNo: { in: refs } }, select: { referenceNo: true } })
+      : [];
+    const takenRefs = new Set(existing.map((s) => s.referenceNo));
+
+    const errors: { row: number; error: string }[] = [];
+    const data: { name: string; referenceNo?: string; type: 'standard' | 'advanced'; folderId: string | null }[] = [];
+    for (const { row, values: v } of rows) {
+      try {
+        if (!v.name) throw new Error('name is required');
+        if (v.name.length > 300) throw new Error('name is too long (max 300)');
+        const referenceNo = v.reference_no?.trim() || undefined;
+        if (referenceNo) {
+          if (referenceNo.length > 60) throw new Error('reference_no is too long (max 60)');
+          if (takenRefs.has(referenceNo)) throw new Error(`Reference number "${referenceNo}" is already in use`);
+          if (dupeRefs.includes(referenceNo)) throw new Error(`Reference number "${referenceNo}" is duplicated in this file`);
+        }
+        const type = (v.type?.trim().toLowerCase() || 'standard') as 'standard' | 'advanced';
+        if (!CREATABLE_SOP_TYPES.includes(type)) throw new Error('type must be standard or advanced');
+        let folderId: string | null = null;
+        if (v.folder?.trim()) {
+          const found = folderByName.get(v.folder.trim().toLowerCase());
+          if (!found) throw new Error(`Folder "${v.folder.trim()}" not found`);
+          folderId = found;
+        }
+        data.push({ name: v.name.trim(), referenceNo, type, folderId });
+      } catch (e) {
+        errors.push({ row, error: (e as Error).message });
+      }
+    }
+    if (errors.length || dto.dryRun) return { imported: 0, valid: data.length, errors };
+
+    try {
+      const imported = await this.prisma.$transaction(async (tx) => {
+        let autoBump = await tx.sop.count({ where: { organizationId: actor.organizationId } });
+        for (const row of data) {
+          let referenceNo = row.referenceNo;
+          if (!referenceNo) {
+            autoBump += 1;
+            referenceNo = `SOP-${String(autoBump).padStart(4, '0')}`;
+          }
+          const sop = await tx.sop.create({
+            data: {
+              organizationId: actor.organizationId,
+              referenceNo,
+              name: row.name,
+              type: row.type,
+              folderId: row.folderId,
+              qrPublicToken: randomBytes(18).toString('base64url'),
+              createdById: actor.id,
+            },
+          });
+          await tx.sopVersion.create({
+            data: { organizationId: actor.organizationId, sopId: sop.id, versionSequence: 1, config: DEFAULT_CONFIG, createdById: actor.id },
+          });
+          await recomputeSopStatus(tx, sop.id);
+        }
+        return data.length;
+      });
+      return { imported, valid: data.length, errors };
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new ConflictException('A reference number collided during import; please retry');
+      throw e;
+    }
   }
 }

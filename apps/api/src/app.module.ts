@@ -5,6 +5,7 @@ import { ActivityModule } from './analytics/activity.service';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { BackupsModule } from './backups/backups.module';
 import { ChecklistsModule } from './checklists/checklists.module';
 import { AuthorizationGuard } from './common/authorization.guard';
 import { FoldersModule } from './folders/folders.module';
@@ -39,6 +40,7 @@ import { SkillsModule } from './skills/skills.module';
     MediaModule,
     FoldersModule,
     SopsModule,
+    BackupsModule,
     ChecklistsModule,
     KanbansModule,
     SkillsModule,

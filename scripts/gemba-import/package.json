@@ -1,0 +1,14 @@
+{
+  "name": "@gembadocs/gemba-import",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dump": "node dump-one.js",
+    "pull": "node pull-all.js"
+  },
+  "dependencies": {
+    "dotenv": "16.4.5",
+    "playwright": "1.47.2"
+  }
+}

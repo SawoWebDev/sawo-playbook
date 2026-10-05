@@ -32,6 +32,8 @@ export interface VersionSummary {
   submittedAt: string | null;
   approvedAt: string | null;
   publishedAt: string | null;
+  createdByName?: string | null;
+  publishedByName?: string | null;
 }
 
 export interface SopDetail {

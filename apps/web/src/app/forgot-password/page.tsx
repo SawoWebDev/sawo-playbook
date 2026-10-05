@@ -25,7 +25,7 @@ export default function ForgotPasswordPage() {
       <form className="card auth-card" onSubmit={submit}>
         <div className="brand">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/assets/images/sawo-logo.webp" alt="SAWO" width={479} height={300} />
+          <img src="/assets/images/sawo-logo.webp" alt="SAWO" width={400} height={255} />
         </div>
         <h1>Reset password</h1>
         {sent ? (

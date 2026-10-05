@@ -8,7 +8,6 @@
 
 .sop-editor { max-width: 1400px; }
 .editor-head { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 5; flex-wrap: wrap; }
-.back-link { color: var(--primary); }
 .editor-status { font-size: 12px; }
 .editor-section { padding: 12px 0 16px; border-bottom: 1px solid var(--border); }
 .name-label { display: flex; justify-content: space-between; max-width: 540px; }
@@ -39,7 +38,7 @@
 .sop-editor .editor-step { background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0 4px; }
 .editor-step.critical .step-label { color: var(--danger); }
 .editor-step.critical .desc-box { border-color: var(--danger); }
-.step-top { display: flex; align-items: center; gap: 6px; }
+.step-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .step-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--primary); letter-spacing: .5px; margin: 0; }
 .step-label input { width: auto; }
 .icon-btn { background: none; border: 0; cursor: pointer; font-size: 14px; padding: 2px 5px; border-radius: 4px; color: var(--primary); display: inline-flex; align-items: center; margin: 0; }
