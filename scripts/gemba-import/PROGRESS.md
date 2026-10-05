@@ -15,10 +15,10 @@ account and recreate them in this app at http://localhost:3000.
 
 **Migration is complete as of 2026-10-05 (session 2).** All 121 SOPs from gembadocs.com are in the
 app with matching Reference No, Created By (real original names, not the import account), display
-order, and Draft/Published status. 11 of the 121 are genuinely empty on gembadocs.com itself
-(titled "N/A", "No step found." — not a pull failure, verified by inspecting the live page) and
-were imported as empty stubs at the user's request, to match the source exactly rather than
-silently dropping them.
+order, and Draft/Published status. 14 of the 121 have no steps on gembadocs.com itself — 12 titled
+"N/A" ("No step found.") plus "FOR PFC PURPOSES ONLY" and "FEED DEBUGGING MODE (CNC PANEL BENDER)" —
+not a pull failure, verified by inspecting the live pages. They were imported as empty drafts at the
+user's request, to match the source exactly rather than silently dropping them.
 
 ### Publish status
 gembadocs.com's own list is a mix of published SOPs and ones marked "My Draft" — not everything is

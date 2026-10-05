@@ -8,7 +8,8 @@
 
 ## ▶ Resume Here (last stop)
 
-- **Last updated:** 2026-09-30 — Session 1
+- **Last updated:** 2026-10-05 — Session 3
+- **2026-10-05 (Session 3):** all 121 SOPs imported from gembadocs.com with their original reference no., creator, dates, order and draft/published status (tooling + full log: `scripts/gemba-import/PROGRESS.md`). New **full backup & restore** — Backups page `/backups` (menu: Backups; also the Export icon on STD OPS opens it in a new tab with live progress), `apps/api/src/backups/*`: one `.zip` with every SOP, version, step, setting and image; restore checks the file first and never overwrites. **Full API suite 219/219 green** (15 suites, incl. 10 new in `test/backups.e2e-spec.ts`).
 - **Current phase:** Phase 10 — Full Regression & Hardening (Phase 3 blocked on video-stack decision; Phase 9 optional)
 - **2026-09-30 SIMPLIFIED to 3 containers (db, api, web):** removed redis/BullMQ/worker (maintenance runs on a timer in the API; mail sent inline via SMTP_URL or logged), MinIO (uploads on `uploads` volume, HMAC-signed `/api/files/...` URLs), Gotenberg (SOP `/versions/:vid/print` + kanban `bulk/print` return PDFs rendered by headless Chromium (puppeteer-core) inside the api container; no canonical PDF stored), ClamAV/Mailpit (Mailpit only in `e2e` profile). API suite 184/184 green. Older notes below that mention Redis/MinIO/Gotenberg/worker are historical. `scripts/backup.sh`/`restore.sh` still reference MinIO and need updating; Playwright e2e not re-run.
 - **Last completed step:** Phase 10 core done — BullMQ worker + retention/purge + media cleanup (4 tests), prod images + `docker-compose.prod.yml`, CSP, security checklist, README. **Full API suite 168/168 green**, `next build` clean.
@@ -52,6 +53,11 @@ docker compose --profile test build api-test               # rebuild after packa
 | 2026-09-30 | Nobody can assess their own skills; Trainers see self + trainees | conflict of interest; §7.2 "their trainees" |
 | 2026-09-30 | **Approval workflow optional, off by default** (`approval_required`) — user's process has no approval | user decision, overrides spec §6.3 default |
 | 2026-09-30 | Step description limit 400 characters (UI-enforced), hint above 120 | matches reference GembaDocs editor |
+| 2026-10-05 | **Full backup = one `.zip`**: `manifest.json`, `folders/users/media.json`, one JSON per SOP (all versions, steps, config, approvals), binaries in `media/` with sha256. Runs as a background job with polled progress; stored under `STORAGE_DIR/org/<org>/backups`; download via 10-min HMAC link. Managers only (`org.settings.manage`). Format documented in `src/backups/backup-format.ts` | user request: portable backup, ready to re-import, live progress |
+| 2026-10-05 | Restore never overwrites (same reference no. ⇒ skipped); people not in the target org become `invited` OPERATOR placeholders with no password; step text is re-sanitised and every image re-checked (sha256, magic bytes, malware scan) because the file is untrusted | security — backup file may be hand-edited |
+| 2026-10-05 | `archiver` pinned to 7.x (8.x is ESM-only, risky in this CommonJS API); `yauzl` for reading | tooling |
+| 2026-10-05 | STD OPS list default sort = **Newest** (Date Raised, matches gembadocs); real *Last Modified* kept as `updatedAt`. List dates use `02 Sep, 2026` (`fmtListDate`) | user: same order/fields as gembadocs |
+| 2026-10-05 | Step duration shows in the step header (right) and is hidden when 00:00:00 (`StepsView`, kiosk) | user request |
 
 ---
 
@@ -155,6 +161,18 @@ docker compose --profile test build api-test               # rebuild after packa
 - [x] API: SOP type editable standard↔advanced; sanitizer keeps only `color`/`background-color` styles (tests added)
 - [ ] Full API + Playwright verification, commit
 
+## Phase 11 — gembadocs.com import + full backup/restore (Session 3) ✅
+- [x] Import of 121 SOPs (steps, images, original ref no./creator/dates, draft vs published) — `scripts/gemba-import/` (pull → push → publish → verify; `verify-content.js` re-checks 732 steps / 725 images against the source). 14 of the 121 have no steps on gembadocs.com itself (12 titled "N/A", plus "FOR PFC PURPOSES ONLY" and "FEED DEBUGGING MODE (CNC PANEL BENDER)") and were imported as empty drafts — an empty SOP cannot be published here, so the one that is published at the source stays a draft; refs `8` and `129` appear twice at the source, so the repeats are `8-2` / `129-2` (ref no. is unique per org here).
+- [x] API `src/backups/*`: start/list/status/delete, signed download, restore (+ dry-run "check file"), audit actions `backup.exported` / `backup.restored`
+- [x] Web `/backups`: live progress (percent bar, phases, SOP/image counters, bytes, current item, warnings), history with Download/Delete, restore panel with upload progress; STD OPS Export icon (managers) starts a backup and opens it in a new tab
+- [x] Tests `test/backups.e2e-spec.ts` (10): round trip into another org is identical (steps, images by sha256, versions, config, links, dates), dry run writes nothing, skip-existing, tampered/corrupt/malicious files, permissions, cross-tenant 404, link tamper/expiry
+- [x] `.gitignore` has `backups/`; added exceptions for the two source folders so they are tracked
+- [ ] Not in a backup (by design, for now): checklist submissions, skill assessments/records, kanbans, discarded (ABANDONED) drafts, org settings/users' passwords
+- [ ] Approvals from people who are not in the target org collapse onto the person restoring (unique per round/approver)
+- [ ] Backups are written to the same `uploads` volume as live data — copy them off the host; no schedule/retention yet
+- [ ] `scripts/backup.sh` / `restore.sh` still reference MinIO (see Resume Here) — now partly superseded by the in-app backup
+- [ ] Dev note: Docker bind mounts on Windows don't deliver file events, so after editing API/web source run `docker compose restart api web`; running `api-test` re-runs `npm install`/`prisma generate` in the shared volume and can make the dev API return 500s for a moment
+
 ## Phase 9 — Marketing site (optional)
 - [ ] Not started (optional per spec)
 
@@ -191,6 +209,13 @@ docker compose --profile test build api-test               # rebuild after packa
 - End of session state: 13 test files / 179 tests green; fresh `docker compose up -d --build` healthy; all web pages 200.
 - Test count by suite: auth, authorization, schema, users, sops, checklists, folders, kanbans, skills, analytics, maintenance = 168.
 - Full `docker compose up -d --build` verified (Docker Desktop occasionally returns `EOF` on container create — just re-run).
+
+### Session 3 — 2026-10-05
+- Recovered Docker after the C: drive filled up (corrupt Docker data disk, stale WSL) — see `scripts/gemba-import/PROGRESS.md` for the full story and the fixes.
+- Imported all 121 gembadocs.com SOPs and matched Reference No., Created By, Date Raised, Last Modified, list order and draft/published status; list now shows `02 Sep, 2026` dates and sorts by Newest by default.
+- Step view: duration badge moved into the step header (right), hidden at 00:00:00.
+- Built full backup & restore (Phase 11): 219/219 API tests green; verified in a real browser (progress page 27% → 100%, download link, step header).
+- Lesson: the root `.gitignore` rule `backups/` would have silently hidden the new `backups` source folders — exceptions added.
 
 ### Session 2 — 2026-10-01
 - SAWO branding: logo (`public/assets/images/sawo-logo.webp`), tan header `#a97d53`, flat caramel buttons `#b0825e`, red accent `#c8454a`, Montserrat everywhere incl. SOP PDF and kanban print (`apps/api/src/pdf/brand.ts`).
