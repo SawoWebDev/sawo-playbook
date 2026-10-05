@@ -101,6 +101,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </Link>
               ))}
               <button
+                className="danger"
                 onClick={async () => {
                   await logout();
                   router.replace('/login');

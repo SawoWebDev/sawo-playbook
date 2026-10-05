@@ -21,26 +21,26 @@ export const KANBAN_SORT_FIELDS = ['partCode', 'partDescription', 'supplier', 'l
 export const KANBAN_TEMPLATES = ['01', '02'] as const;
 
 class KanbanFields {
-  @IsOptional() @IsString() @MaxLength(2000) partDescription?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) partDescription?: string | null;
   @IsOptional() @IsUUID() pictureAssetId?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) supplier?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) supplierPartNo?: string | null;
-  @IsOptional() @IsString() @MaxLength(500) usedFor?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) orderWhen?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) orderQty?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) deliveryTime?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) location?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) supplier?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) supplierPartNo?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) usedFor?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) orderWhen?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) orderQty?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) deliveryTime?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) location?: string | null;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(9_999_999_999) price?: number | null;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(9_999_999_999) carriage?: number | null;
-  @IsOptional() @IsString() @MaxLength(500) customField1?: string | null;
-  @IsOptional() @IsString() @MaxLength(500) customField2?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) customField1?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) customField2?: string | null;
   @IsOptional() @IsIn(['url', 'sop', 'email']) orderingType?: 'url' | 'sop' | 'email';
-  @IsOptional() @IsString() @MaxLength(2000) orderingUrl?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) orderingUrl?: string | null;
   @IsOptional() @IsUUID() orderingSopId?: string | null;
   @IsOptional() @IsString() @MaxLength(320) orderingEmail?: string | null;
-  @IsOptional() @IsString() @MaxLength(100) tag?: string | null;
+  @IsOptional() @IsString() @MaxLength(1000) tag?: string | null;
   @IsOptional() @IsString() @MaxLength(30) color?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) barcode?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) barcode?: string | null;
   @IsOptional() @IsIn(KANBAN_TEMPLATES) template?: (typeof KANBAN_TEMPLATES)[number];
   @IsOptional() @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) mediaAssetIds?: string[];
 }
@@ -54,10 +54,10 @@ export class UpdateKanbanDto extends KanbanFields {
 }
 
 export class ListKanbansQuery {
-  @IsOptional() @IsString() @MaxLength(200) search?: string;
-  @IsOptional() @IsString() @MaxLength(100) tag?: string;
-  @IsOptional() @IsString() @MaxLength(200) supplier?: string;
-  @IsOptional() @IsString() @MaxLength(200) location?: string;
+  @IsOptional() @IsString() @MaxLength(5000) search?: string;
+  @IsOptional() @IsString() @MaxLength(1000) tag?: string;
+  @IsOptional() @IsString() @MaxLength(5000) supplier?: string;
+  @IsOptional() @IsString() @MaxLength(5000) location?: string;
   @IsOptional() @IsIn(KANBAN_SORT_FIELDS) sort?: (typeof KANBAN_SORT_FIELDS)[number];
   @IsOptional() @IsIn(['asc', 'desc']) dir?: 'asc' | 'desc';
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) limit?: number;
@@ -70,13 +70,13 @@ export class BulkImportDto {
 }
 
 class BulkPatch {
-  @IsOptional() @IsString() @MaxLength(100) tag?: string | null;
+  @IsOptional() @IsString() @MaxLength(1000) tag?: string | null;
   @IsOptional() @IsString() @MaxLength(30) color?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) location?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) supplier?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) orderWhen?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) orderQty?: string | null;
-  @IsOptional() @IsString() @MaxLength(200) deliveryTime?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) location?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) supplier?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) orderWhen?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) orderQty?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) deliveryTime?: string | null;
   @IsOptional() @IsIn(KANBAN_TEMPLATES) template?: (typeof KANBAN_TEMPLATES)[number];
 }
 

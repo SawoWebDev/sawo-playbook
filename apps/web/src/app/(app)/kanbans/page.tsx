@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { KanbanCardMenu } from '@/components/KanbanCardMenu';
-import type { Kanban } from '@/components/KanbanForm';
+import { splitTags, type Kanban } from '@/components/KanbanForm';
 import { Lightbox, type LightboxImage } from '@/components/Lightbox';
 import { OptButton } from '@/components/OptButton';
 import { Icons, SubbarRight } from '@/components/Subbar';
@@ -95,7 +95,7 @@ function Kanbans() {
     const all = data?.items ?? [];
     return {
       creators: [...new Set(all.map((k) => k.createdBy?.name ?? 'N/A'))].sort((a, b) => a.localeCompare(b)),
-      tags: [...new Set(all.map((k) => k.tag ?? NO_TAG))].sort((a, b) => (a === NO_TAG ? 1 : b === NO_TAG ? -1 : a.localeCompare(b))),
+      tags: [...new Set(all.flatMap((k) => (splitTags(k.tag).length ? splitTags(k.tag) : [NO_TAG])))].sort((a, b) => (a === NO_TAG ? 1 : b === NO_TAG ? -1 : a.localeCompare(b))),
       colors: [...new Set(all.map((k) => (k.color || DEFAULT_COLOR).toLowerCase()))].sort(),
     };
   }, [data]);
@@ -104,7 +104,7 @@ function Kanbans() {
       (data?.items ?? []).filter(
         (k) =>
           (!flt.creators || flt.creators.includes(k.createdBy?.name ?? 'N/A')) &&
-          (!flt.tags || flt.tags.includes(k.tag ?? NO_TAG)) &&
+          (!flt.tags || (splitTags(k.tag).length ? splitTags(k.tag) : [NO_TAG]).some((t) => flt.tags!.includes(t))) &&
           (!flt.colors || flt.colors.includes((k.color || DEFAULT_COLOR).toLowerCase())),
       ),
     [data, flt],
@@ -347,7 +347,7 @@ function Kanbans() {
                 </div>
                 <div className="line">Supplier Part No: <b>{k.supplierPartNo ?? 'N/A'}</b></div>
                 <div className="line">Created Date: <b>{fmtListDate(k.createdAt)}</b></div>
-                <div className="line">Tag: <b>{k.tag ?? 'NO TAG'}</b></div>
+                <div className="line">Tag: <b>{splitTags(k.tag).join(', ') || 'NO TAG'}</b></div>
                 <div className="line">Created By: <b>{k.createdBy?.name ?? 'N/A'}</b></div>
                 <div className="line">Last Modified: <b>{fmtListDate(k.updatedAt)}</b></div>
               </div>

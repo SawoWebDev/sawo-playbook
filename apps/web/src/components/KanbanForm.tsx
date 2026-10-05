@@ -171,12 +171,11 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
   );
 
   const field = (k: string, label: string, max: number, opts: { required?: boolean; placeholder?: string; type?: string } = {}) => (
-    <Field id={`k-${k}`} label={label} count={opts.type === 'number' ? undefined : `${f[k].length}/${max}`}>
+    <Field id={`k-${k}`} label={label} >
       <input
         id={`k-${k}`}
         type={opts.type ?? 'text'}
         value={f[k]}
-        maxLength={max}
         required={opts.required}
         placeholder={opts.placeholder ?? label.replace(/ \*$| \(Optional\)$/, '')}
         onChange={set(k)}
@@ -250,8 +249,8 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
             </div>
           </div>
 
-          <Field id="k-partDescription" label="Part Description" count={`${f.partDescription.length}/2000`}>
-            <textarea id="k-partDescription" rows={3} maxLength={2000} placeholder="Part Description" value={f.partDescription} onChange={set('partDescription')} />
+          <Field id="k-partDescription" label="Part Description">
+            <textarea id="k-partDescription" rows={3} placeholder="Part Description" value={f.partDescription} onChange={set('partDescription')} />
           </Field>
 
           <div className="field">
@@ -263,13 +262,13 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
             </div>
           </div>
           {f.orderingType === 'url' && (
-            <Field id="k-orderingUrl" label="Ordering Item URL (Optional)" count={`${f.orderingUrl.length}/2000`} hint="Paste the supplier's web link (http:// or https://). It is encoded in the QR code on the back of the card.">
-              <textarea id="k-orderingUrl" rows={2} maxLength={2000} placeholder="Ordering Item URL" value={f.orderingUrl} onChange={set('orderingUrl')} />
+            <Field id="k-orderingUrl" label="Ordering Item URL (Optional)" hint="Paste the supplier's web link (http:// or https://). It is encoded in the QR code on the back of the card.">
+              <textarea id="k-orderingUrl" rows={2} placeholder="Ordering Item URL" value={f.orderingUrl} onChange={set('orderingUrl')} />
             </Field>
           )}
           {f.orderingType === 'email' && (
             <Field id="k-orderingEmail" label="Ordering Email *" hint="Scanning the QR code opens an order email to this address.">
-              <input id="k-orderingEmail" type="email" required maxLength={320} placeholder="purchasing@example.com" value={f.orderingEmail} onChange={set('orderingEmail')} />
+              <input id="k-orderingEmail" type="email" required placeholder="purchasing@example.com" value={f.orderingEmail} onChange={set('orderingEmail')} />
             </Field>
           )}
           {f.orderingType === 'sop' && (
@@ -315,12 +314,52 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
             {field('customField1', 'Custom Field 1 (Optional)', 500)}
             {field('customField2', 'Custom Field 2 (Optional)', 500)}
           </div>
-          {field('tag', 'Tag (Optional)', 100, { placeholder: 'Enter a tag, e.g. bearings' })}
+          <Field id="k-tag" label="Tags (Optional)" hint="Type a tag and press Enter (or comma) to add it. Add as many as you need.">
+            <TagInput value={f.tag} onChange={(v) => setF((st) => ({ ...st, tag: v }))} />
+          </Field>
         </div>
       </form>
 
       <div className="kanban-footer">{actions}</div>
     </>
+  );
+}
+
+/** Tags are kept as one comma-separated text value ("bearings, spare"); this edits them as chips. */
+export const splitTags = (v: string | null | undefined) => (v ?? '').split(',').map((t) => t.trim()).filter(Boolean);
+
+function TagInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [text, setText] = useState('');
+  const tags = splitTags(value);
+  const commit = (raw: string) => {
+    const add = raw.split(',').map((t) => t.trim()).filter((t) => t && !tags.some((x) => x.toLowerCase() === t.toLowerCase()));
+    if (add.length) onChange([...tags, ...add].join(', '));
+    setText('');
+  };
+  return (
+    <div className="tag-input">
+      {tags.map((t) => (
+        <span key={t} className="tag-chip">
+          {t}
+          <button type="button" aria-label={`Remove ${t}`} onClick={() => onChange(tags.filter((x) => x !== t).join(', '))}>
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        id="k-tag"
+        value={text}
+        placeholder={tags.length ? '' : 'Enter a tag, e.g. bearings'}
+        onChange={(e) => (e.target.value.includes(',') ? commit(e.target.value) : setText(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(text);
+          } else if (e.key === 'Backspace' && !text && tags.length) onChange(tags.slice(0, -1).join(', '));
+        }}
+        onBlur={() => commit(text)}
+      />
+    </div>
   );
 }
 

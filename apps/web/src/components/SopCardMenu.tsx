@@ -126,7 +126,6 @@ export function SopCardMenu({
         <div className={`menu-list icon-menu${up ? ' up' : ''}`} onMouseLeave={() => setOpen(false)}>
           {canEdit && <Item icon={Icons.pencil} label="Edit" onClick={edit} />}
           {canEdit && <Item icon={Icons.copy} label="Duplicate" onClick={duplicate} />}
-          <Item icon={Icons.globe} label="Translate" note="coming soon" />
           {canTrain && <Item icon={Icons.training} label="Update Training Record" onClick={() => show('training')} />}
           {canSeeTraining && <Item icon={Icons.record} label="Training History" onClick={() => show('history')} />}
           {canEdit && <Item icon={Icons.folder} label="Add to Folder" onClick={() => show('folder')} />}

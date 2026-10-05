@@ -179,7 +179,6 @@ function SopDetailView() {
           {more && (
             <div className="menu-list more-menu icon-menu" onMouseLeave={() => setMore(false)}>
               {canEdit && <Item icon={Icons.copy} label="Duplicate" onClick={() => void duplicate()} />}
-              <Item icon={Icons.globe} label="Translate" note="coming soon" />
               {canEdit && (
                 <Item
                   icon={Icons.folder}
