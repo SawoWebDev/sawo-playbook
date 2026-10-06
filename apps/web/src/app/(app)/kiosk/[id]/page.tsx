@@ -1,5 +1,6 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -63,7 +64,7 @@ export default function KioskPage() {
   const step = v?.steps[idx];
 
   if (error && !sop) return <div className="error">{error}</div>;
-  if (!sop || !v) return <p className="muted">Loading…</p>;
+  if (!sop || !v) return <Loading />;
 
   const images = step && !step.isTextOnly ? step.media.filter((m) => m.type === 'image') : [];
 
@@ -71,7 +72,7 @@ export default function KioskPage() {
     <>
       <SubbarLeft>
         <Link href={`/sops/${id}`} className="back-btn">
-          <span className="back-chev">‹</span> Back
+          <i className="fa-solid fa-chevron-left" aria-hidden /> Back
         </Link>
         <strong className="bar-title">{sop.name}</strong>
       </SubbarLeft>

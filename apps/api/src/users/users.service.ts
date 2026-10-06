@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { OrgRole, User, UserStatus } from '@prisma/client';
+import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { splitCsvLine } from '../common/csv';
@@ -17,7 +18,7 @@ import { RequestMeta } from '../common/decorators';
 import { env } from '../config/env';
 import { MailService } from '../mail/mail.service';
 import { isUniqueViolation, PrismaService } from '../prisma/prisma.service';
-import { InviteDto } from './users.dto';
+import { CreateUserDto, InviteDto } from './users.dto';
 
 export const INVITE_TTL_DAYS = 7;
 
@@ -152,6 +153,49 @@ export class UsersService {
   }
 
   // ───────────── invitations ─────────────
+
+  /**
+   * Creates an active account now, with a temporary password the Admin sets. The user must replace it at first
+   * sign-in (passwordMustChange). Same role and group rules as an invitation. The password is hashed here and is
+   * never written to the audit trail or returned.
+   */
+  async createUser(actor: AuthUser, dto: CreateUserDto, meta: RequestMeta) {
+    this.assertAssignable(actor, dto.role);
+    const groupIds = await this.assertInviteGroups(actor, dto.role, dto.groupIds ?? []);
+    const email = normaliseEmail(dto.email);
+    if (await this.prisma.user.findUnique({ where: { email } })) {
+      throw new ConflictException('A user with this email already exists');
+    }
+    const passwordHash = await argon2.hash(dto.temporaryPassword);
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            organizationId: actor.organizationId,
+            email,
+            name: dto.name.trim(),
+            orgRole: dto.role,
+            status: 'active',
+            passwordHash,
+            passwordMustChange: true,
+            createdById: actor.id,
+          },
+        });
+        if (groupIds.length) {
+          await tx.groupMember.createMany({ data: groupIds.map((groupId) => ({ groupId, userId: created.id, organizationId: actor.organizationId })) });
+        }
+        await this.audit.record(
+          { action: AuditAction.UserCreated, organizationId: actor.organizationId, actorId: actor.id, entityType: 'user', entityId: created.id, metadata: { role: dto.role, groupIds, passwordMustChange: true }, ...meta },
+          tx,
+        );
+        return created;
+      });
+      return { id: user.id, email: user.email, name: user.name, role: user.orgRole, groupIds, passwordMustChange: true };
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new ConflictException('A user with this email already exists');
+      throw e;
+    }
+  }
 
   async invite(actor: AuthUser, dto: InviteDto, meta: RequestMeta) {
     this.assertAssignable(actor, dto.role);

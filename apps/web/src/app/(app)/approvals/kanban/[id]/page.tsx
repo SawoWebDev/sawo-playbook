@@ -1,5 +1,7 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -32,7 +34,7 @@ export default function KanbanApprovalPage() {
   const [rev, setRev] = useState<Revision | null>(null);
   const [item, setItem] = useState<ApprovalItem | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
 
@@ -50,10 +52,9 @@ export default function KanbanApprovalPage() {
   const act = async (path: string, body: object, done: string) => {
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await api(`/kanbans/revisions/${id}${path}`, { method: 'POST', body });
-      setNotice(done);
+      toast.success(done);
       setDialog(null);
       await load();
     } catch (e) {
@@ -71,7 +72,7 @@ export default function KanbanApprovalPage() {
       </>
     );
   }
-  if (!rev) return <p className="muted" role="status">Loading…</p>;
+  if (!rev) return <Loading />;
 
   const { actions } = rev;
   const blocked = !!item?.sections.has('blocked');
@@ -87,7 +88,6 @@ export default function KanbanApprovalPage() {
         <span className="badge badge-blue">{STATE_LABEL[rev.state] ?? rev.state}</span>
       </div>
       {error && <div className="error" role="alert">{error}</div>}
-      {notice && <div className="success">{notice}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         <section className="card" aria-label="Change">

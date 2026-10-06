@@ -1,5 +1,6 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Kanban } from '@/components/KanbanForm';
@@ -75,7 +76,7 @@ export function KanbanCardMenu({
           setOpen((o) => !o);
         }}
       >
-        •••
+        <i className="fa-solid fa-ellipsis" aria-hidden />
       </button>
       {open && (
         <div className={`menu-list icon-menu${up ? ' up' : ''}`} onMouseLeave={() => setOpen(false)}>
@@ -123,7 +124,7 @@ export function ChangeHistory({ kanban: k, onClose }: { kanban: Kanban; onClose:
           {kanbanTitle(k)}
         </p>
         {error && <div className="error">{error}</div>}
-        {!rows && !error && <p className="muted">Loading…</p>}
+        {!rows && !error && <Loading />}
         {rows && (
           <div className="dialog-scroll">
             <table className="table">

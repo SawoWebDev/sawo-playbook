@@ -13,7 +13,7 @@ import { env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { orgIsUsable } from './org-status';
 import { AccessTokenPayload, AuthUser } from './auth-user';
-import { IS_PUBLIC_KEY, PERMISSION_KEY } from './decorators';
+import { ALLOW_WHILE_PASSWORD_CHANGE_KEY, IS_PUBLIC_KEY, PERMISSION_KEY } from './decorators';
 import { effectivePermissions, Permission } from './permissions';
 
 /**
@@ -46,6 +46,11 @@ export class AuthorizationGuard implements CanActivate {
 
     if (!user.permissions.has(permission)) {
       throw new ForbiddenException('Insufficient permission');
+    }
+    // A temporary password must be replaced before anything else is usable. The identity read and the change itself stay open.
+    const allowWhilePending = this.reflector.getAllAndOverride<boolean>(ALLOW_WHILE_PASSWORD_CHANGE_KEY, targets);
+    if (user.passwordMustChange && !allowWhilePending) {
+      throw new ForbiddenException('Password change required');
     }
     return true;
   }
@@ -88,6 +93,7 @@ export class AuthorizationGuard implements CanActivate {
       name: user.name,
       permissions: effectivePermissions(user.orgRole, user.organization.settings?.rolePermissions),
       groupIds: user.groupMemberships.map((m) => m.groupId),
+      passwordMustChange: user.passwordMustChange,
     };
   }
 }

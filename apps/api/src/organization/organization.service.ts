@@ -10,6 +10,37 @@ import { AuditQueryDto, UpdateSettingsDto } from './organization.dto';
 /** Proposed default (§7.7, §18 "can be deferred"). Move to OrganizationSettings when made configurable. */
 export const DELETION_COOLDOWN_DAYS = 14;
 
+/**
+ * Sidebar items an Admin may reorder or hide. Administration items (users, roles, settings, backups, audit...) are deliberately
+ * not here: hiding them could lock every admin out of the screen that would bring them back.
+ */
+export const NAV_ITEMS = ['/sops', '/kanbans', '/skills', '/folders', '/checklists', '/approvals', '/analytics'] as const;
+
+export interface NavConfig {
+  order: string[];
+  hidden: string[];
+}
+
+/** Validate and tidy a menu customisation: known items only, no repeats, and at least one item left visible. */
+function normalizeNav(input: NavConfig): NavConfig {
+  const known = new Set<string>(NAV_ITEMS);
+  const clean = (list: string[]) => {
+    for (const href of list) if (!known.has(href)) throw new BadRequestException(`"${href}" is not a menu item that can be customised`);
+    return [...new Set(list)];
+  };
+  const order = clean(input.order);
+  const hidden = clean(input.hidden);
+  if (NAV_ITEMS.every((h) => hidden.includes(h))) throw new BadRequestException('At least one menu item must stay visible');
+  return { order, hidden };
+}
+
+function readNav(value: Prisma.JsonValue | null | undefined): { order: string[]; hidden: string[] } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const v = value as { order?: unknown; hidden?: unknown };
+  const strings = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === 'string') : []);
+  return { order: strings(v.order), hidden: strings(v.hidden) };
+}
+
 @Injectable()
 export class OrganizationService {
   constructor(
@@ -32,6 +63,7 @@ export class OrganizationService {
         approvalQuorum: org.settings.approvalQuorum,
         allowSelfApproval: org.settings.allowSelfApproval,
         publicSopViewing: org.settings.publicSopViewing,
+        navConfig: readNav(org.settings.navConfig),
         updatedAt: org.settings.updatedAt,
       },
     };
@@ -40,7 +72,10 @@ export class OrganizationService {
   async updateSettings(actor: AuthUser, dto: UpdateSettingsDto, meta: RequestMeta) {
     await this.prisma.$transaction(async (tx) => {
       const before = await tx.organizationSettings.findUniqueOrThrow({ where: { organizationId: actor.organizationId } });
-      const after = await tx.organizationSettings.update({ where: { organizationId: actor.organizationId }, data: dto });
+      const { navConfig, ...plain } = dto;
+      const data: Prisma.OrganizationSettingsUpdateInput = { ...plain };
+      if (navConfig !== undefined) data.navConfig = navConfig === null ? Prisma.JsonNull : { ...normalizeNav(navConfig) };
+      const after = await tx.organizationSettings.update({ where: { organizationId: actor.organizationId }, data });
       await this.audit.record(
         {
           action: AuditAction.OrgSettingsChanged,
@@ -49,8 +84,8 @@ export class OrganizationService {
           entityType: 'organization_settings',
           entityId: actor.organizationId,
           metadata: {
-            before: { approvalRequired: before.approvalRequired, approvalQuorum: before.approvalQuorum, allowSelfApproval: before.allowSelfApproval, publicSopViewing: before.publicSopViewing },
-            after: { approvalRequired: after.approvalRequired, approvalQuorum: after.approvalQuorum, allowSelfApproval: after.allowSelfApproval, publicSopViewing: after.publicSopViewing },
+            before: { approvalRequired: before.approvalRequired, approvalQuorum: before.approvalQuorum, allowSelfApproval: before.allowSelfApproval, publicSopViewing: before.publicSopViewing, navConfig: readNav(before.navConfig) },
+            after: { approvalRequired: after.approvalRequired, approvalQuorum: after.approvalQuorum, allowSelfApproval: after.allowSelfApproval, publicSopViewing: after.publicSopViewing, navConfig: readNav(after.navConfig) },
           },
           ...meta,
         },

@@ -1,5 +1,7 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,6 +11,7 @@ import { buildTree, flatten, type FolderRow } from '@/lib/folders';
 import { errorMessage, fmtDuration, plural } from '@/lib/format';
 import { AdvancedOptions } from '@/components/AdvancedOptions';
 import { Lightbox, type LightboxImage } from '@/components/Lightbox';
+import { SubbarLeft, SubbarRight } from '@/components/Subbar';
 import type { MediaItem, SopDetail, SopListItem, SopType, VersionConfig, VersionDetail } from '@/lib/types';
 
 const NAME_MAX = 100;
@@ -132,7 +135,7 @@ export default function SopEditorPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [popup, setPopup] = useState<{ images: LightboxImage[]; start: number } | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -192,7 +195,6 @@ export default function SopEditorPage() {
 
   const touch = () => {
     setDirty(true);
-    setNotice(null);
   };
 
   const update = (key: string, patch: Partial<DraftStep>) => {
@@ -264,7 +266,6 @@ export default function SopEditorPage() {
     }
     setSaving(true);
     setError(null);
-    setNotice(null);
     try {
       if (name !== sop.name || referenceNo !== sop.referenceNo || folderId !== (sop.folder?.id ?? '') || type !== sop.type) {
         await api(`/sops/${id}`, { method: 'PATCH', body: { name, referenceNo, folderId: folderId || null, type } });
@@ -297,7 +298,7 @@ export default function SopEditorPage() {
   }
 
   async function saveDraft() {
-    if (await save()) setNotice('Draft saved.');
+    if (await save()) toast.success('Draft saved.');
   }
 
   async function finishAndSave() {
@@ -321,7 +322,7 @@ export default function SopEditorPage() {
   }
 
   if (error && !version) return <div className="error">{error}</div>;
-  if (!sop || !version || !config) return <p className="muted">Loading…</p>;
+  if (!sop || !version || !config) return <Loading />;
   if (version.lifecycleState !== 'DRAFT') {
     return (
       <div className="card">
@@ -342,7 +343,7 @@ export default function SopEditorPage() {
 
   return (
     <div className="sop-editor">
-      <div className="editor-head">
+      <SubbarLeft>
         <Link
           href="/sops"
           className="back-btn"
@@ -350,14 +351,15 @@ export default function SopEditorPage() {
             if (dirty && !confirm('Discard unsaved changes?')) e.preventDefault();
           }}
         >
-          <span className="back-chev">‹</span> Back
+          <i className="fa-solid fa-chevron-left" aria-hidden /> Back
         </Link>
-        <strong>Edit {isAdvanced ? 'Advanced' : 'Standard'} Operation</strong>
+        <strong className="bar-title">Edit {isAdvanced ? 'Advanced' : 'Standard'} Operation</strong>
         <Info tip="Changes are saved as a draft version. The published version stays unchanged until you Finish & Save." />
-        <span className="muted editor-status">
+        <span className={`badge ${dirty ? 'badge-amber' : 'badge-blue'}`}>
           v{version.label} draft{dirty ? ' · unsaved changes' : ''}
         </span>
-        <div className="spacer" />
+      </SubbarLeft>
+      <SubbarRight>
         <button
           type="button"
           className="btn-link"
@@ -368,16 +370,15 @@ export default function SopEditorPage() {
         >
           Cancel
         </button>
-        <button type="button" className="btn btn-warning" disabled={saving} onClick={saveDraft}>
-          {saving ? 'Saving…' : 'Save As Draft'}
+        <button type="button" className="btn" disabled={saving} onClick={saveDraft}>
+          <i className="fa-solid fa-floppy-disk" aria-hidden /> {saving ? 'Saving…' : 'Save As Draft'}
         </button>
         <button type="button" className="btn btn-primary" disabled={saving} onClick={finishAndSave}>
-          {approvalRequired ? 'Finish & Submit' : 'Finish & Save'}
+          <i className={`fa-solid ${approvalRequired ? 'fa-paper-plane' : 'fa-check'}`} aria-hidden /> {approvalRequired ? 'Finish & Submit' : 'Finish & Save'}
         </button>
-      </div>
+      </SubbarRight>
       {error && <div className="error">{error}</div>}
       {popup && <Lightbox images={popup.images} start={popup.start} onClose={() => setPopup(null)} />}
-      {notice && <div className="success">{notice}</div>}
 
       <div className="editor-section">
         <div className="name-label">
@@ -501,11 +502,12 @@ export default function SopEditorPage() {
         }}
       />
 
+      <div className="steps-wrap">
       <div className="steps-head">
         <strong>Add Steps in to the procedure</strong>
         <span className="menu">
           <button type="button" className="btn-link" onClick={() => setMoreOpen((o) => !o)}>
-            More Options ›
+            More Options <i className="fa-solid fa-chevron-down" aria-hidden style={{ fontSize: 10 }} />
           </button>
           {moreOpen && (
             <div className="menu-list" style={{ left: 0, right: 'auto' }} onMouseLeave={() => setMoreOpen(false)}>
@@ -736,13 +738,13 @@ export default function SopEditorPage() {
 
             <div className="step-actions">
               <button type="button" className="btn-link" disabled={idx === steps.length - 1} onClick={() => move(idx, 1)}>
-                ↓ Move Down
+                <i className="fa-solid fa-arrow-down" aria-hidden /> Move Down
               </button>
               <button type="button" className="btn-link" onClick={() => insertAfter(idx)}>
-                + Insert Step
+                <i className="fa-solid fa-plus" aria-hidden /> Insert Step
               </button>
               <button type="button" className="btn-link" disabled={idx === 0} onClick={() => move(idx, -1)}>
-                ↑ Move Up
+                <i className="fa-solid fa-arrow-up" aria-hidden /> Move Up
               </button>
             </div>
           </div>
@@ -758,8 +760,9 @@ export default function SopEditorPage() {
           touch();
         }}
       >
-        + Add New Step
+        <i className="fa-solid fa-plus" aria-hidden /> Add New Step
       </button>
+      </div>
     </div>
   );
 }

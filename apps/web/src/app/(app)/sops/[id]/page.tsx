@@ -1,5 +1,7 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
@@ -17,7 +19,7 @@ import type { ApprovalHistory, SopDetail, VersionDetail } from '@/lib/types';
 
 export default function SopDetailPage() {
   return (
-    <Suspense fallback={<p className="muted">Loading…</p>}>
+    <Suspense fallback={<Loading />}>
       <SopDetailView />
     </Suspense>
   );
@@ -32,7 +34,7 @@ function SopDetailView() {
   const [version, setVersion] = useState<VersionDetail | null>(null);
   const [approvals, setApprovals] = useState<ApprovalHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
@@ -75,10 +77,9 @@ function SopDetailView() {
   async function act(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await fn();
-      setNotice(ok);
+      toast.success(ok);
       setComment('');
       await load();
     } catch (e) {
@@ -118,7 +119,7 @@ function SopDetailView() {
   }
 
   if (error && !sop) return <div className="error">{error}</div>;
-  if (!sop) return <p className="muted">Loading…</p>;
+  if (!sop) return <Loading />;
 
   const canEdit = hasPermission(user, 'sop.edit') && !sop.archivedAt;
   const v = version;
@@ -142,7 +143,7 @@ function SopDetailView() {
     <>
       <SubbarLeft>
         <Link href="/sops" className="back-btn">
-          <span className="back-chev">‹</span> Back
+          <i className="fa-solid fa-chevron-left" aria-hidden /> Back
         </Link>
         <strong className="bar-title">{sop.name}</strong>
       </SubbarLeft>
@@ -173,7 +174,7 @@ function SopDetailView() {
         )}
         <div className="menu">
           <button className="kebab" aria-label="More options" aria-expanded={more} onClick={() => setMore((o) => !o)}>
-            ⋮
+            <i className="fa-solid fa-ellipsis-vertical" aria-hidden />
           </button>
           {more && (
             <div className="menu-list more-menu icon-menu" onMouseLeave={() => setMore(false)}>
@@ -240,7 +241,7 @@ function SopDetailView() {
                 onClose={(n) => {
                   setDialog(null);
                   if (n) {
-                    setNotice(n);
+                    toast.success(n);
                     void load();
                   }
                 }}
@@ -283,7 +284,6 @@ function SopDetailView() {
       )}
 
       {error && <div className="error">{error}</div>}
-      {notice && <div className="success">{notice}</div>}
       {lastRejection && (
         <div className="card" style={{ borderColor: '#f1c4c0', marginBottom: 12 }}>
           <span className="badge badge-red">Rejected</span> by {lastRejection.approver.name}: {lastRejection.comment}
@@ -494,7 +494,7 @@ function SopDetailView() {
               <div className="opt-card">
                 <div className="opt-head">Share Options</div>
                 <div className="opt-body">
-                  <button className="opt-btn" onClick={() => navigator.clipboard?.writeText(qrLink).then(() => setNotice('Link copied.'))}>
+                  <button className="opt-btn" onClick={() => navigator.clipboard?.writeText(qrLink).then(() => toast.success('Link copied.'))}>
                     Share PDF / Link
                   </button>
                   <a className="opt-btn outline" href={`/api/qr/${sop.qrPublicToken}/image.png`} download={`${sop.referenceNo}-qr.png`}>
@@ -502,7 +502,7 @@ function SopDetailView() {
                   </a>
                   <button
                     className="opt-btn outline"
-                    onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/sops/${id}`).then(() => setNotice('Link copied.'))}
+                    onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/sops/${id}`).then(() => toast.success('Link copied.'))}
                   >
                     Share Link to View SOP in App
                   </button>

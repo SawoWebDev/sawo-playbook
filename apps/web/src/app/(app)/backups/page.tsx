@@ -1,5 +1,7 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
+import { useToast } from '@/components/feedback/Toast';
 import './backups.css';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
@@ -75,7 +77,7 @@ const RESTORE_STEPS = [
 
 export default function BackupsPage() {
   return (
-    <Suspense fallback={<p className="muted">Loading…</p>}>
+    <Suspense fallback={<Loading />}>
       <Backups />
     </Suspense>
   );
@@ -83,6 +85,7 @@ export default function BackupsPage() {
 
 function Backups() {
   const { user } = useAuth();
+  const toast = useToast();
   const router = useRouter();
   const params = useSearchParams();
   const [jobId, setJobId] = useState<string | null>(params.get('job'));
@@ -127,14 +130,25 @@ function Backups() {
     if (!jobId || !isManager) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Announce the end of a job only if this page watched it running, not when reopening an old one.
+    let sawRunning = false;
     const tick = async () => {
       try {
         const j = await api<Job>(`/backups/${jobId}`);
         if (stopped) return;
         setJob(j);
         setError(null);
-        if (j.status === 'running') timer = setTimeout(tick, 500);
-        else void loadList();
+        if (j.status === 'running') {
+          sawRunning = true;
+          timer = setTimeout(tick, 500);
+        } else {
+          void loadList();
+          if (sawRunning) {
+            const what = j.kind === 'export' ? 'Backup' : j.dryRun ? 'Backup file check' : 'Restore';
+            if (j.status === 'done') toast.success(`${what} finished.`);
+            else toast.error(`${what} failed.${j.error ? ` ${j.error}` : ''}`);
+          }
+        }
       } catch (e) {
         if (stopped) return;
         if (e instanceof ApiError && e.status === 404) {
@@ -149,13 +163,14 @@ function Backups() {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [jobId, isManager, loadList]);
+  }, [jobId, isManager, loadList, toast]);
 
   async function startBackup() {
     setBusy(true);
     setError(null);
     try {
       const j = await api<Job>('/backups', { method: 'POST' });
+      toast.info('Backup started. You can follow its progress below.');
       watch(j.id);
       void loadList();
     } catch (e) {
@@ -173,6 +188,7 @@ function Backups() {
       document.body.appendChild(a);
       a.click();
       a.remove();
+      toast.success('Download started.');
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -182,6 +198,7 @@ function Backups() {
     if (!window.confirm(`Delete this backup (${j.file ? fmtBytes(j.file.sizeBytes) : ''}) from the server? This cannot be undone.`)) return;
     try {
       await api(`/backups/${j.id}`, { method: 'DELETE' });
+      toast.success('Backup deleted.');
       if (jobId === j.id) watch(null);
       void loadList();
     } catch (e) {
@@ -192,26 +209,49 @@ function Backups() {
   if (user && !isManager) {
     return (
       <>
-        <h1>Backups</h1>
-        <p className="muted">Only the organization owner and admins can create and restore backups.</p>
+        <div className="um-card"><div className="um-empty"><i className="fa-solid fa-lock" aria-hidden /><p>Only the organization owner and admins can create and restore backups.</p></div></div>
       </>
     );
   }
 
   const running = job?.status === 'running' || jobs.some((j) => j.status === 'running');
+  const exports = jobs.filter((j) => j.kind === 'export' && j.status === 'done' && j.file);
+  const latest = exports[0] ?? null;
+  const restores = jobs.filter((j) => j.kind === 'restore' && !j.dryRun).length;
 
   return (
     <>
-      <h1>Backups</h1>
-      <p className="muted bk-lead">
-        A backup is a single file with every SOP and kanban in this organization — all versions, steps, settings and images — ready to be restored here or into another organization.
-        Keep copies somewhere safe.
-      </p>
+      <div className="page-head">
+        <p className="page-lead">
+          A backup is one file with every SOP and kanban in this organization: all versions, steps, settings and images. It can be restored here or into another organization. Keep copies somewhere safe.
+        </p>
+        <div className="page-head-actions">
+          <button className="btn btn-primary" onClick={() => void startBackup()} disabled={busy || running}>
+            <i className="fa-solid fa-cloud-arrow-down" aria-hidden /> {running ? 'Working…' : 'Create backup'}
+          </button>
+        </div>
+      </div>
 
-      <div className="bk-actions">
-        <button className="btn btn-primary" onClick={() => void startBackup()} disabled={busy || running}>
-          Create backup
-        </button>
+      <div className="kpi-grid">
+        <div className="kpi">
+          <span className="kpi-icon"><i className="fa-solid fa-box-archive" aria-hidden /></span>
+          <span className="kpi-text"><span className="kpi-value">{exports.length}</span><span className="kpi-label">Backups on the server</span></span>
+        </div>
+        <div className={`kpi${latest ? ' kpi-good' : ' kpi-warn'}`}>
+          <span className="kpi-icon"><i className="fa-solid fa-clock" aria-hidden /></span>
+          <span className="kpi-text">
+            <span className="kpi-value" style={{ fontSize: 15 }}>{latest ? fmtDateTime(latest.startedAt) : 'Never'}</span>
+            <span className="kpi-label">Latest backup</span>
+          </span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-icon"><i className="fa-solid fa-weight-hanging" aria-hidden /></span>
+          <span className="kpi-text"><span className="kpi-value">{latest?.file ? fmtBytes(latest.file.sizeBytes) : '—'}</span><span className="kpi-label">Latest size</span></span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-icon"><i className="fa-solid fa-clock-rotate-left" aria-hidden /></span>
+          <span className="kpi-text"><span className="kpi-value">{restores}</span><span className="kpi-label">Restores run</span></span>
+        </div>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -219,66 +259,81 @@ function Backups() {
 
       <RestorePanel
         disabled={running}
-        onStarted={(id) => {
+        onStarted={(id, dryRun) => {
+          toast.info(dryRun ? 'Checking the backup file…' : 'Restore started. You can follow its progress below.');
           watch(id);
           void loadList();
         }}
         onError={setError}
       />
 
-      <h2>History</h2>
-      {jobs.length === 0 ? (
-        <p className="muted">No backups yet. Create one with the button above.</p>
-      ) : (
-        <table className="table bk-table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>What</th>
-              <th>By</th>
-              <th className="num">SOPs</th>
-              <th className="num">Kanbans</th>
-              <th className="num">Images</th>
-              <th className="num">Size</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((j) => (
-              <tr key={j.id}>
-                <td style={{ whiteSpace: 'nowrap' }}>{fmtDateTime(j.startedAt)}</td>
-                <td>
-                  {j.kind === 'export' ? 'Backup' : j.dryRun ? 'Restore check' : 'Restore'}{' '}
-                  {j.status === 'running' && <span className="badge">running</span>}
-                  {j.status === 'failed' && <span className="badge badge-red">failed</span>}
-                </td>
-                <td>{j.startedByName}</td>
-                <td className="num">{j.file?.counts.sops ?? j.summary?.created ?? '—'}</td>
-                <td className="num">{j.file?.counts.kanbans ?? j.summary?.kanbans?.created ?? '—'}</td>
-                <td className="num">{j.file?.counts.media ?? j.summary?.mediaCreated ?? '—'}</td>
-                <td className="num">{j.file ? fmtBytes(j.file.sizeBytes) : '—'}</td>
-                <td>
-                  <div className="bk-row-actions">
-                    <button className="btn btn-sm" onClick={() => watch(j.id)}>
-                      View
-                    </button>
-                    {j.kind === 'export' && j.file && (
-                      <>
-                        <button className="btn btn-sm" onClick={() => void download(j.id)}>
-                          Download
-                        </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => void remove(j)}>
-                          Delete
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <section className="ui-section">
+        <div className="ui-section-head">
+          <h3>History</h3>
+        </div>
+        <div className="um-card">
+          {jobs.length === 0 ? (
+            <div className="um-empty">
+              <i className="fa-solid fa-box-archive" aria-hidden />
+              <p>No backups yet. Create one with the button above.</p>
+            </div>
+          ) : (
+            <div className="um-table-wrap">
+              <table className="um-table bk-table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>What</th>
+                    <th>By</th>
+                    <th className="num">SOPs</th>
+                    <th className="num">Kanbans</th>
+                    <th className="num">Images</th>
+                    <th className="num">Size</th>
+                    <th aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {jobs.map((j) => (
+                    <tr key={j.id} className={jobId === j.id ? 'is-current' : ''}>
+                      <td className="um-nowrap muted">{fmtDateTime(j.startedAt)}</td>
+                      <td>
+                        <span className="bk-kind">
+                          <i className={`fa-solid ${j.kind === 'export' ? 'fa-box-archive' : j.dryRun ? 'fa-magnifying-glass' : 'fa-clock-rotate-left'}`} aria-hidden />
+                          {j.kind === 'export' ? 'Backup' : j.dryRun ? 'Restore check' : 'Restore'}
+                        </span>{' '}
+                        {j.status === 'running' && <span className="badge badge-amber">running</span>}
+                        {j.status === 'failed' && <span className="badge badge-red">failed</span>}
+                      </td>
+                      <td>{j.startedByName}</td>
+                      <td className="num">{j.file?.counts.sops ?? j.summary?.created ?? '—'}</td>
+                      <td className="num">{j.file?.counts.kanbans ?? j.summary?.kanbans?.created ?? '—'}</td>
+                      <td className="num">{j.file?.counts.media ?? j.summary?.mediaCreated ?? '—'}</td>
+                      <td className="num">{j.file ? fmtBytes(j.file.sizeBytes) : '—'}</td>
+                      <td>
+                        <div className="bk-row-actions">
+                          <button className="grp-icon-btn" title="View details" aria-label="View details" onClick={() => watch(j.id)}>
+                            <i className="fa-solid fa-eye" aria-hidden />
+                          </button>
+                          {j.kind === 'export' && j.file && (
+                            <>
+                              <button className="grp-icon-btn" title="Download" aria-label="Download" onClick={() => void download(j.id)}>
+                                <i className="fa-solid fa-download" aria-hidden />
+                              </button>
+                              <button className="grp-icon-btn danger" title="Delete" aria-label="Delete" onClick={() => void remove(j)}>
+                                <i className="fa-solid fa-trash" aria-hidden />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
     </>
   );
 }
@@ -448,7 +503,7 @@ function RestoreResult({ summary }: { summary: RestoreSummary }) {
   );
 }
 
-function RestorePanel({ disabled, onStarted, onError }: { disabled: boolean; onStarted: (jobId: string) => void; onError: (m: string) => void }) {
+function RestorePanel({ disabled, onStarted, onError }: { disabled: boolean; onStarted: (jobId: string, dryRun: boolean) => void; onError: (m: string) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -462,7 +517,7 @@ function RestorePanel({ disabled, onStarted, onError }: { disabled: boolean; onS
     setUploadPct(0);
     try {
       const job = await apiUpload<Job>(`/backups/restore${dryRun ? '?dryRun=true' : ''}`, form, (l, t) => setUploadPct(Math.round((l / t) * 100)));
-      onStarted(job.id);
+      onStarted(job.id, dryRun);
     } catch (err) {
       onError(errorMessage(err));
     } finally {
@@ -472,21 +527,42 @@ function RestorePanel({ disabled, onStarted, onError }: { disabled: boolean; onS
 
   return (
     <section className="card bk-restore" aria-label="Restore from a backup file">
-      <h2 style={{ marginTop: 0 }}>Restore from a backup file</h2>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Choose a backup file made by this app. “Check file” reads it end to end (checksums, formats, images) and shows what would happen without changing anything.
-        Restoring never overwrites a SOP that already exists.
-      </p>
+      <div className="pf-card-head">
+        <span className="kpi-icon"><i className="fa-solid fa-clock-rotate-left" aria-hidden /></span>
+        <div>
+          <h3>Restore from a backup file</h3>
+          <p className="muted">
+            “Check file” reads it end to end (checksums, formats, images) and shows what would happen without changing anything. Restoring never overwrites a SOP that already exists.
+          </p>
+        </div>
+      </div>
       <form className="bk-restore-row" onSubmit={(e) => void submit(e, false)}>
-        <input ref={input} type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Backup file" />
-        <button type="button" className="btn" disabled={!file || disabled || uploadPct !== null} onClick={(e) => void submit(e, true)}>
-          Check file
-        </button>
-        <button type="submit" className="btn btn-primary" disabled={!file || disabled || uploadPct !== null}>
-          Restore
-        </button>
+        <label className={`bk-drop${file ? ' has-file' : ''}`}>
+          <input ref={input} type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Backup file" />
+          <i className={`fa-solid ${file ? 'fa-file-zipper' : 'fa-upload'}`} aria-hidden />
+          <span className="bk-drop-text">
+            {file ? (
+              <>
+                <b>{file.name}</b>
+                <span className="muted">{fmtBytes(file.size)} · click to choose another file</span>
+              </>
+            ) : (
+              <>
+                <b>Choose a backup file</b>
+                <span className="muted">A .zip made by this app</span>
+              </>
+            )}
+          </span>
+        </label>
+        <div className="bk-restore-actions">
+          <button type="button" className="btn" disabled={!file || disabled || uploadPct !== null} onClick={(e) => void submit(e, true)}>
+            <i className="fa-solid fa-magnifying-glass" aria-hidden /> Check file
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={!file || disabled || uploadPct !== null}>
+            <i className="fa-solid fa-clock-rotate-left" aria-hidden /> Restore
+          </button>
+        </div>
       </form>
-      {file && <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>{file.name} · {fmtBytes(file.size)}</p>}
       {uploadPct !== null && (
         <div className="bk-upload" aria-live="polite">
           <div className="bk-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadPct} aria-label="Uploading">

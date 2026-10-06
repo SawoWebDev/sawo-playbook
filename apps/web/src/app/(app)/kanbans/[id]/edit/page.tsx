@@ -1,5 +1,6 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { KanbanEditor, type Kanban } from '@/components/KanbanForm';
@@ -18,6 +19,6 @@ export default function EditKanbanPage() {
   }, [id]);
 
   if (error) return <div className="error">{error}</div>;
-  if (!kanban) return <p className="muted">Loading…</p>;
+  if (!kanban) return <Loading />;
   return <KanbanEditor kanban={kanban} />;
 }

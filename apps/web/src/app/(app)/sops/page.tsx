@@ -1,11 +1,14 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { OptButton } from '@/components/OptButton';
 import { Item, SopCardMenu } from '@/components/SopCardMenu';
 import { SopStatusBadge } from '@/components/StatusBadge';
+import { Avatar } from '@/components/users/Avatar';
 import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -48,7 +51,7 @@ interface Creator {
 
 export default function SopsPage() {
   return (
-    <Suspense fallback={<p className="muted">Loading…</p>}>
+    <Suspense fallback={<Loading />}>
       <SopsList />
     </Suspense>
   );
@@ -75,7 +78,7 @@ function SopsList() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [creating, setCreating] = useState<SopType | null>(null);
   const [newName, setNewName] = useState('');
   const [newRef, setNewRef] = useState('');
@@ -370,7 +373,7 @@ function SopsList() {
         </Link>
         <div className="menu">
           <button className={`icon-btn view-kebab ${popover === 'view' ? 'on' : ''}`} aria-label="View options" title="View options" onClick={() => togglePopover('view')}>
-            ⋮
+            <i className="fa-solid fa-ellipsis-vertical" aria-hidden />
           </button>
           {popover === 'view' && (
             <div className="menu-list icon-menu">
@@ -417,29 +420,38 @@ function SopsList() {
         </div>
         {canCreate && (
           <OptButton inline onClick={() => setCreating('standard')}>
-            + Create New
+            <i className="fa-solid fa-plus" aria-hidden /> Create New
           </OptButton>
         )}
       </SubbarRight>
 
-      {selected.size > 0 && (
-        <div className="row select-bar">
+      <SubbarLeft>
+        {selected.size > 0 && (
+        <div className="row select-bar select-bar--toolbar">
           <strong>{selected.size} selected</strong>
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              setSelected(new Set(items.map((i) => i.id)));
+              // Always say how many were picked out of the total, so a partly loaded list is never mistaken for a full selection.
+              if (hasMore) toast.info(`Not all SOPs are selected: ${items.length} of ${total} are loaded and selected. Load more, then select all again.`);
+              else toast.success(`All ${total} SOPs are selected.`);
+            }}
+          >
+            Select all
+          </button>
           {canCreate && (
             <button className="btn btn-sm" onClick={() => setBulkOpen(true)}>
               Bulk edit
             </button>
           )}
-          <button className="btn btn-sm" onClick={() => setSelected(new Set(items.map((i) => i.id)))}>
-            Select all loaded
-          </button>
           <button className="btn btn-sm" onClick={() => setSelected(new Set())}>
             Clear
           </button>
         </div>
       )}
+      </SubbarLeft>
       {error && <div className="error">{error}</div>}
-      {notice && <div className="success">{notice}</div>}
 
       {items.length === 0 ? (
         <p className="muted">No procedures found.</p>
@@ -448,31 +460,51 @@ function SopsList() {
           {items.map((s) => (
             <div key={s.id} className={`sop-tile${selected.has(s.id) ? ' is-selected' : ''}`}>
               {selectable(s.id)}
-              <Link href={`/sops/${s.id}`} className="sop-card">
-                <div className="name" title={s.name}>
-                  {s.name}
+              <Link href={`/sops/${s.id}`} className="sop-card sc-card">
+                <div className="sc-top">
+                  <span className={`sc-icon${s.type === 'advanced' ? ' is-advanced' : ''}`} aria-hidden>
+                    <i className={`fa-solid ${s.type === 'advanced' ? 'fa-layer-group' : 'fa-file-lines'}`} />
+                  </span>
+                  <div className="name" title={s.name}>
+                    {s.name}
+                  </div>
                 </div>
-                {s.status !== 'published' && (
-                  <span className="badge">
+                <ul className="sc-meta">
+                  {/* Status, ID and version share the first row of the details. */}
+                  <li className="sc-stat">
                     {s.activeVersion?.rejected ? (
                       <span className="badge badge-red">Rejected</span>
                     ) : (
                       <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} lifecycle={s.activeVersion?.lifecycleState} />
                     )}
+                    <span className="ui-code" title="Reference number">ID: {s.referenceNo}</span>
+                    {s.currentPublishedVersion && <span className="sc-ver" title="Published version">v{s.currentPublishedVersion.label}</span>}
+                    {s.type === 'advanced' && <span className="grp-chip">Advanced</span>}
+                  </li>
+                  <li title="Folder">
+                    <i className="fa-solid fa-folder" aria-hidden /> {s.folder?.name ?? <span className="muted">No folder</span>}
+                  </li>
+                  <li title="Date raised">
+                    <i className="fa-solid fa-calendar-plus" aria-hidden /> Raised {fmtListDate(s.createdAt)}
+                  </li>
+                  <li title="Last modified">
+                    <i className="fa-solid fa-clock-rotate-left" aria-hidden /> Modified {fmtListDate(s.updatedAt)}
+                  </li>
+                </ul>
+                <div className="sc-foot">
+                  {s.createdBy ? <Avatar name={s.createdBy.name} size={24} /> : <span className="sc-noavatar"><i className="fa-solid fa-user" aria-hidden /></span>}
+                  <span className="sc-by">{s.createdBy?.name ?? 'Unknown author'}</span>
+                  <span className="sc-open">
+                    Open <i className="fa-solid fa-arrow-right" aria-hidden />
                   </span>
-                )}
-                <div className="line">Reference No: <b>{s.referenceNo}</b></div>
-                <div className="line">Folder: <b>{s.folder?.name ?? 'N/A'}</b></div>
-                <div className="line">Date Raised: <b>{fmtListDate(s.createdAt)}</b></div>
-                <div className="line">Created By: <b>{s.createdBy?.name ?? 'N/A'}</b></div>
-                <div className="line">Last Modified: <b>{fmtListDate(s.updatedAt)}</b></div>
+                </div>
               </Link>
               <SopCardMenu
                 sop={s}
                 folders={folderOptions}
                 onError={setError}
                 onChanged={(msg) => {
-                  setNotice(msg ?? null);
+                  if (msg) toast.success(msg);
                   void load(0);
                 }}
               />
@@ -486,9 +518,10 @@ function SopsList() {
               <tr>
                 {canCreate && <th className="sop-list-check" />}
                 <th>Name</th>
-                <th>Reference No</th>
-                <th>Folder</th>
                 <th>Status</th>
+                <th>ID</th>
+                <th>Version</th>
+                <th>Folder</th>
                 <th>Date Raised</th>
                 <th>Created By</th>
                 <th>Last Modified</th>
@@ -502,8 +535,6 @@ function SopsList() {
                   <td>
                     <Link href={`/sops/${s.id}`}>{s.name}</Link>
                   </td>
-                  <td>{s.referenceNo}</td>
-                  <td>{s.folder?.name ?? 'N/A'}</td>
                   <td>
                     {s.activeVersion?.rejected ? (
                       <span className="badge badge-red">Rejected</span>
@@ -511,6 +542,9 @@ function SopsList() {
                       <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} lifecycle={s.activeVersion?.lifecycleState} />
                     )}
                   </td>
+                  <td><span className="ui-code">{s.referenceNo}</span></td>
+                  <td>{s.currentPublishedVersion ? `v${s.currentPublishedVersion.label}` : <span className="muted">Not published</span>}</td>
+                  <td>{s.folder?.name ?? 'N/A'}</td>
                   <td>{fmtListDate(s.createdAt)}</td>
                   <td>{s.createdBy?.name ?? 'N/A'}</td>
                   <td>{fmtListDate(s.updatedAt)}</td>
@@ -520,7 +554,7 @@ function SopsList() {
                       folders={folderOptions}
                       onError={setError}
                       onChanged={(msg) => {
-                        setNotice(msg ?? null);
+                        if (msg) toast.success(msg);
                         void load(0);
                       }}
                     />
@@ -582,7 +616,7 @@ function SopsList() {
           <ImportDialog
             onClose={(msg) => {
               setShowImport(false);
-              if (msg) setNotice(msg);
+              if (msg) toast.success(msg);
               void load(0);
             }}
           />
@@ -597,7 +631,7 @@ function SopsList() {
             onClose={(msg) => {
               setBulkOpen(false);
               if (msg) {
-                setNotice(msg);
+                toast.success(msg);
                 setSelected(new Set());
               }
               void load(0);

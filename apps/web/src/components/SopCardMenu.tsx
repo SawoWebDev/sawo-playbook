@@ -1,5 +1,6 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -119,7 +120,7 @@ export function SopCardMenu({
           setOpen((o) => !o);
         }}
       >
-        •••
+        <i className="fa-solid fa-ellipsis" aria-hidden />
       </button>
       {open && (
         <div className={`menu-list icon-menu${up ? ' up' : ''}`} onMouseLeave={() => setOpen(false)}>
@@ -306,7 +307,7 @@ function TrainingHistory({ sop, onClose }: { sop: SopListItem; onClose: () => vo
     <>
       <DialogHead title="Training History" sop={sop} />
       {error && <div className="error">{error}</div>}
-      {!rows && !error && <p className="muted">Loading…</p>}
+      {!rows && !error && <Loading />}
       {rows && rows.length === 0 && <p className="muted">No training recorded for this SOP yet.</p>}
       {rows && rows.length > 0 && (
         <div className="dialog-scroll">
@@ -364,7 +365,7 @@ export function ChangeHistory({ sop, onClose }: { sop: SopRef; onClose: () => vo
     <>
       <DialogHead title="Change History" sop={sop} />
       {error && <div className="error">{error}</div>}
-      {!detail && !error && <p className="muted">Loading…</p>}
+      {!detail && !error && <Loading />}
       {detail && (
         <div className="dialog-scroll">
           <table className="table">

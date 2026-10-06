@@ -3,7 +3,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { AuthUser } from '../common/auth-user';
 import { CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
-import { BulkInviteDto, ChangeRoleDto, InviteDto, UpdateUserDto } from './users.dto';
+import { BulkInviteDto, ChangeRoleDto, CreateUserDto, InviteDto, UpdateUserDto } from './users.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -14,6 +14,12 @@ export class UsersController {
   @RequirePermission(Permission.UsersManage)
   list(@CurrentUser() actor: AuthUser) {
     return this.users.list(actor);
+  }
+
+  @Post()
+  @RequirePermission(Permission.UsersManage)
+  createUser(@CurrentUser() actor: AuthUser, @Body() dto: CreateUserDto, @ReqMeta() meta: RequestMeta) {
+    return this.users.createUser(actor, dto, meta);
   }
 
   @Get('invitations')

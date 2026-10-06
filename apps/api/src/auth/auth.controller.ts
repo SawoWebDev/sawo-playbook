@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuthUser } from '../common/auth-user';
-import { CurrentUser, Public, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
+import { AllowWhilePasswordChangeRequired, CurrentUser, Public, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
 import { env } from '../config/env';
 import { LoginDto, LoginMfaDto, SignupDto } from './auth.dto';
@@ -87,6 +87,7 @@ export class AuthController {
 
   @Get('me')
   @RequirePermission(Permission.Authenticated)
+  @AllowWhilePasswordChangeRequired()
   /**
    * The caller's identity plus the authorisation context the frontend needs for display only. Both values come from
    * the guard's per-request load (the same source the guard enforces), so this adds no second permission calculation.
@@ -101,6 +102,7 @@ export class AuthController {
       name: user.name,
       permissions: [...user.permissions].filter((p) => p !== Permission.Authenticated).sort(),
       groupIds: [...user.groupIds].sort(),
+      passwordMustChange: user.passwordMustChange,
     };
   }
 }

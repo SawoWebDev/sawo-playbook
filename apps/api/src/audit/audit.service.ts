@@ -16,6 +16,7 @@ export const AuditAction = {
   OrgDeletionRequested: 'org.deletion.requested',
   OrgDeletionCancelled: 'org.deletion.cancelled',
   OrgDeletionConfirmed: 'org.deletion.confirmed',
+  UserCreated: 'user.created',
   UserInvited: 'user.invited',
   UserInviteAccepted: 'user.invite.accepted',
   UserInviteRevoked: 'user.invite.revoked',

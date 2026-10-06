@@ -14,6 +14,8 @@ export interface AuthUser {
   name: string;
   permissions: ReadonlySet<Permission>;
   groupIds: string[];
+  /** True until the user sets their own password after an Admin created the account. */
+  passwordMustChange: boolean;
 }
 
 export interface AccessTokenPayload {

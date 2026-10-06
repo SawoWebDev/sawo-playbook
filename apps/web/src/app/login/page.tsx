@@ -54,8 +54,8 @@ function Login() {
     setError(null);
     try {
       if (mfaToken) {
-        await loginMfa(mfaToken, code);
-        router.replace(next);
+        const u = await loginMfa(mfaToken, code);
+        router.replace(u.passwordMustChange ? '/change-password' : next);
         return;
       }
       const r = await login(email, password);
@@ -63,7 +63,7 @@ function Login() {
         setMfaToken(r.mfaToken);
         return;
       }
-      router.replace(next);
+      router.replace(r.passwordMustChange ? '/change-password' : next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

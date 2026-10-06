@@ -168,6 +168,8 @@ model OrganizationSettings {
   publicSopViewing  Boolean      @default(false) @map("public_sop_viewing")
   /// Admin-configured permissions per role: { "EDITOR": ["kanban.view", ...] }. Missing roles use the defaults in common/permissions.ts.
   rolePermissions   Json?        @map("role_permissions")
+  /// Sidebar menu customisation: { "order": ["/sops", ...], "hidden": ["/skills"] }. Null = the built-in menu. Only the "Work" and "Review" items are configurable.
+  navConfig         Json?        @map("nav_config")
   updatedAt         DateTime     @default(now()) @updatedAt @map("updated_at")
   organization      Organization @relation(fields: [organizationId], references: [id])
 
@@ -196,6 +198,9 @@ model User {
   // Bumped on password reset / role change / removal; embedded in access JWTs
   // so outstanding access tokens are rejected immediately (§7.3 rule 7).
   tokenVersion        Int        @default(0) @map("token_version")
+  /// Set when an Admin created the account with a temporary password. Every route except the password change and
+  /// /auth/me is refused until the user sets their own password. Cleared by a successful password change.
+  passwordMustChange  Boolean    @default(false) @map("password_must_change")
   failedLogins        Int        @default(0) @map("failed_logins")
   lockedUntil         DateTime?  @map("locked_until")
   lastLoginAt         DateTime?  @map("last_login_at")

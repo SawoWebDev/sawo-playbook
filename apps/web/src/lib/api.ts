@@ -20,6 +20,8 @@ export interface SessionUser {
   permissions: string[];
   /** The user's current group IDs, from GET /auth/me. */
   groupIds: string[];
+  /** True when an Admin set a temporary password. The app stays locked to the change-password page until it is replaced. */
+  passwordMustChange?: boolean;
 }
 
 /** The authorisation context returned by GET /auth/me (display only; the server enforces every request). */

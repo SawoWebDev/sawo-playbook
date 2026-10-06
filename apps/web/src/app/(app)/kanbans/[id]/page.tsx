@@ -1,5 +1,7 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -44,7 +46,7 @@ export default function KanbanDetailPage() {
   const [blocked, setBlocked] = useState<string | null>(null);
   const [revision, setRevision] = useState<KanbanRevisionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [rejectComment, setRejectComment] = useState('');
   const [more, setMore] = useState(false);
   const [history, setHistory] = useState(false);
@@ -73,10 +75,9 @@ export default function KanbanDetailPage() {
   async function act(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await fn();
-      setNotice(ok);
+      toast.success(ok);
       setRejectComment('');
       await load();
     } catch (e) {
@@ -87,7 +88,7 @@ export default function KanbanDetailPage() {
   }
 
   if (error && !k) return <div className="error">{error}</div>;
-  if (!k) return <p className="muted">Loading…</p>;
+  if (!k) return <Loading />;
 
   const canEdit = hasPermission(user, 'kanban.edit');
   const rev = k.openRevision ?? null;
@@ -158,7 +159,7 @@ export default function KanbanDetailPage() {
     <>
       <SubbarLeft>
         <Link href="/kanbans" className="back-btn">
-          <span className="back-chev">‹</span> Back
+          <i className="fa-solid fa-chevron-left" aria-hidden /> Back
         </Link>
         <strong className="bar-title">{title}</strong>
       </SubbarLeft>
@@ -175,7 +176,7 @@ export default function KanbanDetailPage() {
           ))}
         <div className="menu">
           <button className="kebab" aria-label="More options" aria-expanded={more} onClick={() => setMore((o) => !o)}>
-            ⋮
+            <i className="fa-solid fa-ellipsis-vertical" aria-hidden />
           </button>
           {more && (
             <div className="menu-list more-menu icon-menu" onMouseLeave={() => setMore(false)}>
@@ -229,7 +230,6 @@ export default function KanbanDetailPage() {
         </aside>
         <div>
           {error && <div className="error">{error}</div>}
-          {notice && <div className="success">{notice}</div>}
           <div className="info-card">
             <div style={{ gridColumn: '1 / -1' }}>
               <div className="info-label">Approval status</div>

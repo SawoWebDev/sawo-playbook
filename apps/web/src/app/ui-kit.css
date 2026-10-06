@@ -1,0 +1,850 @@
+/* SAWO UI kit: one look for buttons, fields, cards, tables, badges, alerts and page toolbars on every screen.
+   Loaded after globals.css and editor.css, so it wins over their rules of equal specificity.
+   Web screens only: SOP and kanban PDFs are rendered by the API and are not affected by any of this. */
+
+:root {
+  --ui-border: #e7dfd5;
+  --ui-border-strong: #d9c7b4;
+  --ui-soft: #faf7f3;
+  --ui-soft-2: #f4ede5;
+  --ui-text: #2f241b;
+  --ui-text-soft: #6b5a4a;
+  --ui-label: #8a7a6b;
+  --ui-brown: #8c5e38;
+  --ui-brown-dark: #74491f;
+  --ui-radius: 10px;
+  --ui-radius-lg: 14px;
+  --ui-ring: 0 0 0 3px rgba(166, 124, 82, 0.2);
+  --ui-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --ui-shadow-pop: 0 10px 30px rgba(60, 35, 15, 0.16);
+  --ui-danger-fill: linear-gradient(145deg, #e5594b, #c9302c);
+  --ui-danger-fill-hover: linear-gradient(145deg, #c9302c, #a02018);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────
+   Every button is 38px (small: 32px), 10px corners, 600 weight. Secondary is white with a brown edge,
+   primary is the wood fill, danger is red. Older class names (btn-blue, btn-orange, opt-btn, back-btn)
+   map onto the same three looks. */
+.btn, .btn-blue, .btn-orange, .opt-btn, .back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius);
+  background: #fff;
+  color: var(--ui-text-soft);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+  filter: none;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s, transform 0.1s;
+}
+.btn:hover:not(:disabled), .back-btn:hover, .opt-btn.outline:hover:not(:disabled) {
+  background: var(--ui-soft);
+  border-color: #c9a882;
+  color: var(--ui-brown-dark);
+  text-decoration: none;
+}
+.btn:active:not(:disabled), .opt-btn:active:not(:disabled), .back-btn:active { transform: translateY(1px); }
+.btn:focus-visible, .opt-btn:focus-visible, .back-btn:focus-visible, .icon-btn:focus-visible, .kebab:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-ring);
+}
+.btn:disabled, .opt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn i, .opt-btn i, .back-btn i { font-size: 12px; }
+.btn svg, .opt-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+.btn-sm { height: 32px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; gap: 6px; }
+
+.btn-primary, .btn-blue, .btn-orange, .opt-btn:not(.outline) {
+  background: var(--wood-fill);
+  border-color: #af8564;
+  color: #fff;
+  box-shadow: var(--wood-shadow);
+}
+.btn-primary:hover:not(:disabled), .btn-blue:hover:not(:disabled), .btn-orange:hover:not(:disabled), .opt-btn:not(.outline):hover:not(:disabled) {
+  background: var(--wood-fill-hover);
+  border-color: #8c6540;
+  color: #fff;
+  box-shadow: var(--wood-shadow-hover);
+}
+
+.btn-danger {
+  background: var(--ui-danger-fill);
+  border-color: #b42318;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(180, 35, 24, 0.25);
+}
+.btn-danger:hover:not(:disabled) { background: var(--ui-danger-fill-hover); border-color: #8f1d14; color: #fff; }
+
+/* Save as draft and other secondary saves read as secondary buttons. */
+.btn-warning { background: #fff; border-color: var(--ui-border-strong); color: var(--ui-text-soft); }
+
+.btn-link { color: var(--ui-brown-dark); font-weight: 600; }
+
+/* Full-width actions in the SOP and kanban side panels. */
+/* Side-panel buttons grow to fit long labels (e.g. "View or Print Green/Red Code PDF") instead of clipping them. */
+.opt-btn { display: flex; width: 100%; height: auto; min-height: 40px; padding: 9px 14px; white-space: normal; line-height: 1.3; text-align: center; }
+.opt-btn.inline { display: inline-flex; width: auto; height: 38px; padding: 0 16px; }
+.opt-btn.outline { margin-top: 0; }
+.btn-block { display: flex; width: 100%; margin-bottom: 8px; }
+
+/* Back link on detail and edit pages: a secondary button with a chevron. */
+.back-btn { height: 34px; padding: 0 12px 0 10px; gap: 6px; color: var(--ui-brown-dark); }
+.back-btn .back-chev { font-size: 18px; font-weight: 600; margin-top: -2px; }
+
+/* Square icon buttons (toolbars, rows) and the kebab menu trigger. */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  margin: 0;
+  justify-content: center;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--ui-text-soft);
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+}
+.icon-btn:hover, .icon-btn.on { background: var(--ui-soft-2); color: var(--ui-brown-dark); text-decoration: none; }
+.icon-btn.danger { color: var(--danger); }
+.icon-btn.danger:hover { background: #fde2df; color: var(--danger); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.kebab {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius);
+  background: #fff;
+  color: var(--ui-brown-dark);
+  font-size: 18px;
+}
+.kebab:hover { background: var(--ui-soft); border-color: #c9a882; }
+
+/* Compact icons inside the SOP editor's image overlay. */
+.sop-editor .media-tools .icon-btn { width: 26px; height: 26px; border-radius: 6px; }
+.sop-editor .step-top .icon-btn { width: 28px; height: 28px; }
+
+/* ── Fields ──────────────────────────────────────────────────────────── */
+:where(input, select, textarea):focus { outline: none; border-color: #a67c52; box-shadow: var(--ui-ring); }
+:where(select) { cursor: pointer; }
+:where(input, select, textarea):disabled { background: var(--ui-soft); color: var(--muted); cursor: not-allowed; }
+::placeholder { color: #a39585; }
+:where(input[type='checkbox'], input[type='radio']) { accent-color: var(--ui-brown); }
+label { color: var(--ui-text); }
+
+/* ── Cards, dialogs and menus ────────────────────────────────────────── */
+.card {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow);
+  padding: 18px;
+}
+.card > h3:first-child, .card > h2:first-child { margin-top: 0; }
+.dialog-backdrop { background: rgba(30, 20, 10, 0.42); backdrop-filter: blur(2px); z-index: 700; animation: ui-fade 0.15s ease; }
+.dialog { border-radius: 16px; padding: 22px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22); animation: ui-pop 0.18s ease; }
+.dialog h3 { font-size: 16px; }
+.dialog .row:last-child { margin-top: 16px; justify-content: flex-end; }
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+.menu-list {
+  border-color: var(--ui-border);
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow-pop);
+  padding: 6px;
+  z-index: 40;
+}
+.menu-list button, .menu-list.icon-menu button, .menu-list.icon-menu a { border-radius: 8px; }
+.menu-list button:hover:not(:disabled), .menu-list.icon-menu a:hover { background: var(--ui-soft-2); }
+.menu-list button.active { background: var(--ui-soft-2); font-weight: 600; }
+.menu-heading, .muted-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #9a918a; }
+.filter-panel { border-radius: 12px; }
+.filter-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ui-label); margin-bottom: 6px; }
+.kf-clear { color: var(--danger); font-weight: 600; }
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow);
+  font-size: 13.5px;
+}
+.table th {
+  padding: 10px 14px;
+  background: var(--ui-soft);
+  color: var(--ui-label);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ui-border);
+}
+.table td { padding: 10px 14px; border-bottom: 1px solid #f3eee8; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: #fdfbf8; }
+.table td a:not(.btn):not(.grp-icon-btn):not(.icon-btn) { font-weight: 600; color: var(--ui-brown-dark); }
+
+/* ── Badges, pills and chips ─────────────────────────────────────────── */
+.badge { padding: 2px 9px; font-size: 11.5px; line-height: 18px; white-space: nowrap; }
+.badge-blue { background: var(--ui-soft-2); color: var(--ui-brown-dark); }
+.badge-green { background: #dcf3e2; }
+.badge-amber { background: #fff1c7; }
+.badge-red { background: #fde2df; }
+.tabs { gap: 6px; flex-wrap: wrap; }
+.tabs a {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 999px;
+  color: var(--ui-text-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.tabs a:hover { background: var(--ui-soft); }
+
+/* ── Alerts ──────────────────────────────────────────────────────────────
+   Page-level messages are tinted boxes with an icon. Inline messages inside table cells and
+   summaries stay as plain coloured text. */
+div.error, div.success {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: var(--ui-radius);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+div.error { background: #fdecea; border: 1px solid #f6c7c1; color: #9b2018; }
+div.success { background: #e8f6ec; border: 1px solid #bfe3c9; color: #17602b; }
+div.error::before, div.success::before {
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-size: 14px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+div.error::before { content: '\f06a'; }
+div.success::before { content: '\f058'; }
+td div.error, td div.success, .grp-member div.error, .bk-warn div.error {
+  display: block;
+  margin: 4px 0 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: 12px;
+}
+td div.error::before, td div.success::before, .grp-member div.error::before, .bk-warn div.error::before { content: none; }
+
+/* ── Page toolbar (the "frame header" above each list, detail and edit page) ──
+   A white bar that stays at the top while the page scrolls: back link and title on the left,
+   search, sort, filter, view and the main action on the right. */
+.page-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: 56px;
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: 0 2px 10px rgba(60, 35, 15, 0.06);
+}
+.page-toolbar .bar-title { font-size: 15px; font-weight: 700; color: var(--ui-text); margin-left: 2px; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-toolbar .bar-sub { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.page-toolbar .icon-btn { border: 1px solid var(--ui-border); background: #fff; width: 38px; height: 38px; }
+.page-toolbar .icon-btn:hover, .page-toolbar .icon-btn.on { background: var(--ui-soft-2); border-color: #c9a882; }
+.page-toolbar .view-kebab { font-size: 18px; }
+.page-toolbar .btn-link { height: 38px; padding: 0 10px; }
+.subbar-search svg { left: 11px; }
+.subbar-search input { width: min(260px, 40vw); height: 38px; padding-left: 34px; }
+.filter-count { top: -5px; right: -5px; box-shadow: 0 0 0 2px #fff; }
+
+.view-toggle { height: 38px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: #fff; }
+.view-toggle .icon-btn, .page-toolbar .view-toggle .icon-btn { width: 38px; height: 36px; border: 0; border-radius: 0; background: none; }
+.page-toolbar .view-toggle .icon-btn:not(.on):hover { background: var(--ui-soft-2); color: var(--ui-brown-dark); }
+.view-toggle .icon-btn + .icon-btn { border-left: 1px solid var(--ui-border); }
+.view-toggle .icon-btn.on, .page-toolbar .view-toggle .icon-btn.on { background: var(--wood-fill); color: #fff; }
+
+/* Bulk selection bar under the toolbar. */
+.select-bar {
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: #fff8ef;
+  border: 1px solid #ecd9c3;
+  border-radius: 12px;
+}
+.select-bar strong { color: var(--ui-brown-dark); margin-right: 6px; }
+
+/* ── SOP and kanban tiles ────────────────────────────────────────────── */
+.sop-grid { gap: 14px 18px; padding: 2px 0 8px; }
+.sop-card {
+  border: 1px solid var(--ui-border);
+  border-left: 4px solid #b98d5e;
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.sop-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(116, 73, 31, 0.12); border-color: #e0cdb8; border-left-color: var(--ui-brown); }
+.sop-card .name { font-size: 14.5px; color: var(--ui-text); }
+.sop-card .line { color: #7a6c5f; }
+.sop-card .line b { color: var(--ui-text); font-weight: 600; }
+.kanban-thumb { border-radius: 8px; overflow: hidden; background: var(--ui-soft); }
+.kanban-noimg { background: #ece4da; border-radius: 8px; }
+.card-menu .more, .kanban-card .kanban-more .more { border-radius: 8px; padding: 4px 8px; }
+
+/* ── SOP and kanban detail ───────────────────────────────────────────── */
+.info-card {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow);
+  padding: 16px 18px;
+}
+.info-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ui-label); }
+.info-value { font-size: 14px; font-weight: 600; color: var(--ui-text); }
+.opt-card { border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow); }
+.opt-head { background: var(--ui-soft); color: var(--ui-label); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; border-bottom: 1px solid var(--ui-border); }
+.opt-body { gap: 10px; }
+.regen { color: var(--ui-text-soft); text-decoration: underline; text-underline-offset: 2px; }
+.regen:hover { color: var(--danger); }
+.cfg + .cfg { border-left-color: var(--ui-border); }
+.cfg-name { font-size: 13.5px; }
+.sec-title, .view-steps { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ui-label); }
+.step-card { border-color: var(--ui-border); border-radius: 12px; box-shadow: var(--ui-shadow); }
+.steps-grid .step-head { background: var(--ui-soft); border-bottom-color: var(--ui-border); }
+.steps-grid .step-media.empty { background: var(--ui-soft); }
+.panel .card { padding: 16px; }
+.kv dt { color: var(--ui-label); }
+.adv-section { border-color: var(--ui-border); border-radius: 12px; }
+
+/* ── Kanban and SOP editors ──────────────────────────────────────────── */
+.kanban-photo { top: 88px; }
+.kanban-drop { border-radius: 12px; border-color: var(--ui-border-strong); }
+.kanban-fields .field label, .kf-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ui-label); }
+.kanban-footer { border-top-color: var(--ui-border); }
+.kanban-actions .kanban-cancel, .kanban-actions .kanban-save { width: auto; min-width: 110px; height: 38px; padding: 0 16px; }
+
+.sop-editor { max-width: none; }
+.sop-editor .editor-section { background: #fff; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow); padding: 16px 18px; margin-bottom: 14px; }
+.sop-editor .section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ui-label); }
+.sop-editor .name-label label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ui-label); }
+.sop-editor .config-cell + .config-cell { border-left-color: var(--ui-border); }
+.sop-editor .steps-head { margin: 4px 0 10px; }
+.sop-editor .steps-wrap { background: #fff; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow); padding: 4px 18px 10px; }
+.desc-box, .media-main, .media-drop, .media-empty { border-radius: 10px; }
+.desc-box { border-color: var(--ui-border-strong); }
+.desc-foot { border-radius: 0 0 10px 10px; background: var(--ui-soft); }
+.step-actions { gap: 10px; }
+.step-actions .btn-link { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; }
+.step-actions .btn-link:hover:not(:disabled) { background: var(--ui-soft-2); text-decoration: none; }
+
+/* ── Shared page parts (lead text, KPI tiles, segmented controls) ────── */
+.page-lead { margin: 0 0 14px; font-size: 13px; color: var(--muted); max-width: 720px; }
+.page-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.page-head .page-lead { margin: 0; }
+.page-head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.kpi { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid var(--ui-border); border-radius: 12px; box-shadow: var(--ui-shadow); min-width: 0; }
+.kpi-icon { width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--ui-soft-2); color: var(--ui-brown); font-size: 15px; }
+.kpi-text { display: flex; flex-direction: column; min-width: 0; }
+.kpi-value { font-size: 20px; font-weight: 700; color: var(--ui-brown-dark); line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-label { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-warn .kpi-icon { background: #fff1c7; color: var(--warning); }
+.kpi-warn .kpi-value { color: var(--warning); }
+.kpi-good .kpi-icon { background: #dcf3e2; color: var(--success); }
+
+.ui-seg { display: inline-flex; gap: 3px; padding: 3px; background: #efe8df; border-radius: 11px; max-width: 100%; overflow-x: auto; }
+.ui-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ui-text-soft);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ui-seg button:hover { color: var(--ui-brown-dark); background: rgba(255, 255, 255, 0.55); }
+.ui-seg button.is-on { background: #fff; color: var(--ui-brown-dark); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.ui-seg button i { font-size: 11px; }
+.ui-seg .ui-count { padding: 0 6px; border-radius: 999px; background: var(--ui-soft-2); color: var(--ui-brown-dark); font-size: 11px; line-height: 17px; }
+.ui-seg button.is-on .ui-count { background: var(--wood-fill); color: #fff; }
+
+.ui-progress { position: relative; height: 6px; border-radius: 999px; background: #eee6dc; overflow: hidden; min-width: 80px; }
+.ui-progress > span { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--wood-fill); }
+.ui-progress.is-done > span { background: var(--success); }
+
+.ui-section { margin-top: 22px; }
+.ui-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.ui-section-head h3 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #9a918a; }
+.ui-section-head .muted { font-size: 12px; }
+
+.ui-code { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--ui-soft-2); color: var(--ui-brown-dark); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; white-space: nowrap; }
+.ui-kv { display: flex; flex-wrap: wrap; gap: 4px; }
+.ui-kv span { display: inline-flex; gap: 4px; padding: 1px 7px; border-radius: 6px; background: #f6f2ed; color: #5a4a3c; font-size: 11.5px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-kv b { color: var(--ui-label); font-weight: 600; }
+
+@media (max-width: 760px) {
+  .page-toolbar { position: static; padding: 8px; }
+  .page-toolbar .bar-title { max-width: 60vw; }
+  .subbar-search { flex: 1 1 100%; }
+  .subbar-search input { width: 100%; }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-head-actions { width: 100%; margin-left: 0; }
+  .sop-editor .editor-section { padding: 12px; }
+  .sop-editor .steps-wrap { padding: 4px 12px 10px; }
+}
+
+/* Overlays sit above the app header (z-index 200). */
+.lightbox, .rte-full { z-index: 800; }
+
+/* ── Module pages ────────────────────────────────────────────────────── */
+/* Approvals */
+.ap-filters, .au-filters { margin-bottom: 14px; }
+.ap-item { display: flex; align-items: flex-start; gap: 10px; min-width: 240px; }
+.ap-kind { width: 32px; height: 32px; font-size: 13px; border-radius: 9px; }
+.ap-title { font-weight: 700; color: var(--ui-text); }
+.ap-title:hover { color: var(--ui-brown-dark); }
+.ap-note { font-size: 12px; margin-top: 3px; }
+.ap-quorum { display: flex; flex-direction: column; gap: 4px; min-width: 90px; font-size: 12.5px; font-weight: 600; }
+.ap-action { text-align: right; white-space: nowrap; }
+
+/* Audit */
+.au-event { display: inline-flex; align-items: center; gap: 8px; }
+.au-event i { color: #a67c52; font-size: 12px; width: 14px; text-align: center; }
+.au-actor { min-width: 180px; }
+.au-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* Checklists */
+.ck-progress { display: flex; align-items: center; gap: 8px; min-width: 180px; }
+.ck-progress .ui-progress { flex: 1; max-width: 120px; }
+
+/* Analytics */
+.an-chart { margin-bottom: 14px; }
+.an-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.an-card-head h3 { margin: 0; font-size: 14px; }
+.an-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--ui-text-soft); }
+.an-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.an-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.an-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.an-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.an-rank li { display: flex; align-items: flex-start; gap: 10px; }
+.an-rank-n { width: 22px; height: 22px; flex-shrink: 0; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; background: var(--ui-soft-2); color: var(--ui-brown-dark); font-size: 11px; font-weight: 700; }
+.an-rank-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.an-rank-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.an-rank-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-rank-label a { color: var(--ui-text); font-weight: 600; }
+.an-rank-value { font-weight: 700; color: var(--ui-brown-dark); font-variant-numeric: tabular-nums; }
+.an-user { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+
+/* Profile */
+.pf-hero {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; padding: 18px 20px;
+  border-radius: var(--ui-radius-lg); color: #fff;
+  background: linear-gradient(135deg, #b98d5e 0%, #8c5e38 60%, #74491f 100%);
+  box-shadow: 0 6px 20px rgba(116, 73, 31, 0.2);
+}
+.pf-hero .grp-avatar { border: 3px solid rgba(255, 255, 255, 0.6); }
+.pf-hero-text { flex: 1; min-width: 0; }
+.pf-hero-text h2 { margin: 0; color: #fff; font-size: 20px; }
+.pf-hero-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255, 255, 255, 0.85); }
+.pf-hero-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.pf-role { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); border: 1px solid rgba(255, 255, 255, 0.3); font-size: 12px; font-weight: 700; }
+.pf-role.is-off { background: rgba(0, 0, 0, 0.12); }
+.pf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.pf-card { display: flex; flex-direction: column; }
+.pf-card-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+.pf-card-head h3 { margin: 0 0 2px; font-size: 15px; }
+.pf-card-head p { margin: 0; font-size: 12.5px; }
+.pf-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.pf-status { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 13px; }
+.pf-small { font-size: 12.5px; margin: 0 0 10px; }
+.pf-inline { display: flex; gap: 8px; flex-wrap: wrap; }
+.pf-inline input { flex: 1 1 140px; width: auto; }
+.pf-qr { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.pf-qr img { border: 1px solid var(--ui-border); border-radius: 10px; padding: 6px; background: #fff; }
+.pf-secret { white-space: normal; word-break: break-all; margin-top: 4px; }
+.pf-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.pf-role-opt {
+  display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: 10px;
+  background: #fff; color: var(--ui-text-soft); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.pf-role-opt:hover { border-color: #c9a882; background: var(--ui-soft); }
+.pf-role-opt.is-on { border-color: #a67c52; background: #fffbf6; color: var(--ui-brown-dark); box-shadow: 0 0 0 2px rgba(166, 124, 82, 0.2); }
+.pf-role-opt i { color: #a67c52; width: 16px; text-align: center; }
+.pf-you { margin-left: auto; padding: 1px 7px; border-radius: 999px; background: var(--ui-soft-2); font-size: 10.5px; }
+
+/* Folders */
+.fd-create { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 14px; overflow: visible; }
+.fd-create input { flex: 2 1 220px; width: auto; }
+.fd-create select { flex: 1 1 200px; width: auto; }
+.fd-list { list-style: none; margin: 0; padding: 0; }
+.fd-root { padding: 4px 0; }
+.fd-row { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 4px 12px 4px 10px; border-bottom: 1px solid #f3eee8; }
+.fd-row:hover { background: #fdfbf8; }
+.fd-row-new { background: #fffaf3; }
+.fd-toggle { width: 22px; height: 22px; border: 0; border-radius: 6px; background: none; color: #9a8c7e; cursor: pointer; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
+.fd-toggle:hover { background: var(--ui-soft-2); color: var(--ui-brown-dark); }
+.fd-icon { color: #c49a6c; font-size: 15px; width: 18px; text-align: center; }
+.fd-name { font-weight: 600; color: var(--ui-text); }
+.fd-name:hover { color: var(--ui-brown-dark); }
+.fd-tools { display: flex; align-items: center; gap: 2px; opacity: 0.6; transition: opacity 0.15s; }
+.fd-row:hover .fd-tools, .fd-tools:focus-within { opacity: 1; }
+.fd-move { min-width: 130px; margin: 0 4px; height: 32px; font-size: 12.5px; }
+.fd-inline { display: flex; align-items: center; gap: 6px; flex: 1; max-width: 520px; }
+.fd-inline input { flex: 1; width: auto; padding: 5px 10px; }
+
+/* Skills */
+.sk-legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.sk-legend-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border-radius: 999px; background: #fff; border: 1px solid var(--ui-border); font-size: 12px; color: var(--ui-text-soft); }
+.sk-legend-item b { color: var(--ui-brown-dark); }
+.sk-matrix th.sk-col { text-align: center; min-width: 96px; }
+.sk-col-name { font-weight: 400; font-size: 11px; text-transform: none; letter-spacing: 0; max-width: 110px; margin: 0 auto; overflow: hidden; text-overflow: ellipsis; color: #9a8c7e; }
+.sk-matrix .sk-sticky { position: sticky; left: 0; z-index: 1; background: #fff; box-shadow: 1px 0 0 #f1ebe4; }
+.sk-matrix thead .sk-sticky { background: #faf7f3; z-index: 2; }
+.sk-matrix tbody tr:hover .sk-sticky { background: #fdfbf8; }
+.sk-cell-td { text-align: center; }
+.skill-cell { border-radius: 8px; padding: 4px; }
+.skill-cell:hover:not(:disabled) { background: var(--ui-soft-2); }
+.sk-level { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sk-levels { display: flex; flex-direction: column; gap: 6px; }
+.sk-level-opt { display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: 10px; font-weight: 400; cursor: pointer; }
+.sk-level-opt:hover { background: var(--ui-soft); }
+.sk-level-opt.is-on { border-color: #a67c52; background: #fffbf6; box-shadow: 0 0 0 2px rgba(166, 124, 82, 0.18); }
+.sk-level-opt input { width: auto; margin: 0; }
+.sk-level-opt b { color: var(--ui-brown-dark); }
+
+@media (max-width: 640px) {
+  .pf-grid { grid-template-columns: 1fr; }
+  .fd-tools { opacity: 1; }
+  .fd-move { display: none; }
+  .ap-item { min-width: 200px; }
+}
+
+/* ── SOP and kanban detail / editor framing ──────────────────────────── */
+.cfg-row { background: #fff; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow); padding: 14px 16px; }
+.more-title { font-size: 11px; letter-spacing: 0.08em; color: #9a918a; }
+.more-version { border-radius: 8px; padding: 6px 8px; }
+.more-version:hover { background: var(--ui-soft-2); }
+.layout-2 { gap: 24px; }
+.kanban-detail .panel > img { border-radius: 12px !important; border-color: var(--ui-border) !important; box-shadow: var(--ui-shadow); }
+
+.kanban-editor { gap: 20px; }
+.kanban-editor .kanban-photo,
+.kanban-editor .kanban-fields {
+  background: #fff;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow);
+  padding: 18px;
+}
+.kanban-photo-label { font-size: 11px; letter-spacing: 0.08em; color: var(--ui-label); }
+.kanban-footer { margin-top: 4px; padding-bottom: 0; }
+
+/* ── SOP and kanban list cards ───────────────────────────────────────────
+   Header (icon or picture, name, reference), status badges, a short meta list with icons,
+   and a footer with the author. The ••• menu sits top-right; the selection checkbox appears
+   over the SOP icon on hover. */
+.sc-card, .kc-card { min-height: 0; }
+.sc-card .name, .kc-card .name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  white-space: normal;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--ui-text);
+}
+.sc-card .badge, .kc-card .badge { position: static; }
+
+.sc-card { display: flex; flex-direction: column; gap: 12px; height: 100%; padding: 16px 16px 0; }
+.sc-top { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.sc-icon {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ui-soft-2); color: var(--ui-brown); font-size: 16px;
+  transition: opacity 0.15s;
+}
+.sc-icon.is-advanced { background: var(--wood-fill); color: #fff; box-shadow: var(--wood-shadow); }
+.sc-head { flex: 1; min-width: 0; padding-right: 26px; }
+.sc-ref { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 5px; font-size: 12px; }
+.sc-badges, .kc-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sc-meta { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--ui-text-soft); }
+.sc-meta li { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-meta i { width: 14px; flex-shrink: 0; text-align: center; color: #b98d5e; font-size: 11.5px; }
+.sc-foot {
+  display: flex; align-items: center; gap: 8px; margin: auto -16px 0; padding: 10px 16px;
+  border-top: 1px solid #f1ebe4; background: #fdfbf8; border-bottom-left-radius: 8px 11px; border-bottom-right-radius: 11px;
+  font-size: 12px; color: var(--muted);
+}
+.sc-by { flex: 1; min-width: 0; font-weight: 600; color: var(--ui-text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-noavatar { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--ui-soft-2); color: #b98d5e; font-size: 10px; flex-shrink: 0; }
+.sc-open { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--ui-brown-dark); opacity: 0; transform: translateX(-4px); transition: opacity 0.15s, transform 0.15s; }
+.sop-card:hover .sc-open { opacity: 1; transform: none; }
+.sc-date { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.sc-date i { font-size: 11px; color: #b98d5e; }
+
+/* SOP selection checkbox: shown over the icon on hover, while selecting, or when ticked. */
+/* The checkbox sits exactly over the icon: the card has a 1px top border, a 4px left border and 16px padding, and the icon is 30px
+   with its top aligned to the title row (see .sc-card .sc-top). It lifts with the card on hover. */
+.sop-tile .sop-check { top: 23px; left: 26px; width: 18px; height: 18px; z-index: 3; transition: opacity .15s, transform .15s ease; }
+.sop-tile:hover .sop-check { transform: translateY(-2px); }
+.sop-tile:hover .sop-check:active { transform: translateY(-1px); }
+.sop-tile:has(.sop-check):hover .sc-icon,
+.sop-grid.selecting .sop-tile:has(.sop-check) .sc-icon,
+.sop-tile.is-selected .sc-icon { opacity: 0.15; }
+.sop-tile .card-menu { top: 10px; right: 10px; }
+
+/* Kanban card: picture on the left, details on the right, author footer across the bottom.
+   The left stripe is the card's own kanban colour. */
+.kanban-card.kc-card { grid-template-columns: 104px minmax(0, 1fr); align-items: start; gap: 12px 14px; height: 100%; padding: 14px 14px 0; }
+.kc-card .kanban-thumb { width: 104px; height: 104px; border: 1px solid var(--ui-border); border-radius: 10px; background: #fff; }
+.kc-card .kanban-noimg { display: flex; align-items: center; justify-content: center; color: #c9b39e; font-size: 22px; background: var(--ui-soft); }
+.kc-card .kanban-info { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding-right: 22px; }
+.kc-code { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.kc-code .ui-code { overflow: hidden; text-overflow: ellipsis; }
+.kc-swatch { width: 12px; height: 12px; flex-shrink: 0; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.12); }
+.kc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.kc-tag { padding: 1px 8px; border-radius: 999px; background: var(--ui-soft-2); color: var(--ui-brown-dark); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.kc-tag.is-empty { background: #f2efeb; color: var(--muted); font-weight: 500; }
+.kc-foot { grid-column: 1 / -1; margin: 0 -14px; padding: 9px 14px; }
+.kc-card .kanban-more { top: 10px; right: 10px; }
+.kanban-card.kc-card.selected { background: linear-gradient(180deg, #fdf8f2 0%, #fff 65%); }
+
+@media (max-width: 640px) {
+  .kanban-card.kc-card { grid-template-columns: 80px minmax(0, 1fr); }
+  .kc-card .kanban-thumb { width: 80px; height: 80px; }
+  .sc-open { display: none; }
+}
+
+/* SOP detail side panel: a little wider on desktop so the print and share labels fit on one line. Stacks below 1000px as before. */
+@media (min-width: 1001px) { .layout-2:not(.kanban-detail) { grid-template-columns: minmax(0, 1fr) 268px; } }
+
+/* SOP card: ID, published version and status on one row. */
+.sc-ref { row-gap: 5px; }
+.sc-ver { font-size: 12px; font-weight: 700; color: var(--ui-text-soft); }
+
+/* SOP card: title row is only the icon and the name. Status, ID and version lead the details block. */
+.sc-card .sc-top { align-items: flex-start; gap: 10px; }
+.sc-card .sc-icon { width: 30px; height: 30px; border-radius: 9px; font-size: 13px; }
+.sc-card .sc-top .name { font-size: 14px; }
+.sc-card .sc-meta { gap: 6px; }
+.sc-card .sc-stat { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 2px; }
+.sc-card .sc-stat .badge, .sc-card .sc-stat .grp-chip { white-space: nowrap; }
+
+/* Selection bar: sits in the toolbar, left of the search, instead of a separate row. */
+.page-toolbar .select-bar--toolbar { margin: 0; flex-wrap: nowrap; white-space: nowrap; }
+.page-toolbar .select-bar--toolbar strong { white-space: nowrap; }
+
+/* Kanban selection tick box: inside the picture's top-left corner, on a white square so it reads on any photo.
+   The picture frame no longer clips it (it used to hang 6px outside the frame, which hid it). */
+.kc-card .kanban-thumb { overflow: visible; }
+.kc-card .kanban-thumb img { border-radius: 8px; }
+.kc-card .kanban-check { top: 8px; left: 8px; z-index: 3; }
+.kc-card:hover .kanban-check, .kc-card .kanban-check:checked, .kc-card .kanban-check:focus-visible { opacity: 1; }
+
+/* ── Selection: shared look for SOP and kanban cards ─────────────────────
+   The tick box is a round button with a filled check (not the browser's square checkbox).
+   A selected card gets a warm wash, a double ring and a small lift. While selecting, the cards you have not picked
+   step back a little, so the chosen ones stand out. Positions are set where each card is defined. */
+.sop-check, .kanban-check {
+  appearance: none; -webkit-appearance: none;
+  width: 20px; height: 20px; min-width: 20px; margin: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: rgba(47, 36, 27, 0.38);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .15s ease, opacity .15s;
+}
+.sop-check:hover, .kanban-check:hover { transform: scale(1.1); background: rgba(47, 36, 27, 0.55); }
+.sop-check:checked, .kanban-check:checked { background: var(--wood-fill); border-color: #fff; }
+.sop-check:checked::after, .kanban-check:checked::after {
+  content: '\f00c';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-size: 10px;
+  line-height: 1;
+  color: #fff;
+}
+.sop-check:focus-visible, .kanban-check:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.sop-tile .sop-card,
+.kanban-card.kc-card { transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease, border-color .2s ease, background .2s ease; }
+
+.sop-tile.is-selected .sop-card,
+.kanban-card.kc-card.selected {
+  background: linear-gradient(180deg, #fdf8f2 0%, #fff 65%);
+  box-shadow: 0 0 0 2px rgba(166, 124, 82, 0.42), 0 10px 26px rgba(116, 73, 31, 0.16);
+  transform: translateY(-2px);
+}
+.sop-tile.is-selected .sop-card { border-color: #c9a882; }
+
+.sop-grid.selecting .sop-tile:not(.is-selected):not(:hover) .sop-card,
+.kanban-grid.selecting .kanban-card:not(.selected):not(:hover) { opacity: .8; }
+
+/* ── Feedback: toasts, page-loading bar, spinner ─────────────────────────
+   These were written to src/ui-kit.css, which nothing imports, so toasts rendered unstyled below the
+   full-height app shell and never showed. They live here now. Toasts sit bottom-right above everything
+   (header 200, dialogs 700), one row each: icon, message, close. */
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 3000;
+  display: grid;
+  gap: 10px;
+  width: min(380px, calc(100vw - 36px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid #e3efe6;
+  border-left: 4px solid var(--success);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ui-text);
+  box-shadow: 0 12px 32px rgba(40, 25, 10, 0.18), 0 2px 6px rgba(40, 25, 10, 0.08);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.toast::before {
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-size: 15px;
+  line-height: 1.35;
+  flex-shrink: 0;
+  content: '\f058';
+  color: var(--success);
+}
+.toast-error { border-color: #f6c7c1; border-left-color: var(--danger); }
+.toast-error::before { content: '\f06a'; color: var(--danger); }
+.toast-info { border-color: #ecd9c3; border-left-color: var(--ui-brown); }
+.toast-info::before { content: '\f05a'; color: var(--ui-brown); }
+.toast-text { flex: 1; min-width: 0; }
+.toast-close {
+  width: 24px;
+  height: 24px;
+  margin: -2px -2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-soft);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.toast-close:hover { opacity: 1; background: var(--ui-soft-2); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+.nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  z-index: 3000;
+  background: var(--wood-fill);
+  transform-origin: left;
+  animation: nav-progress-run 1.2s ease-in-out infinite;
+}
+@keyframes nav-progress-run {
+  0% { transform: scaleX(0.05); }
+  50% { transform: scaleX(0.7); }
+  100% { transform: scaleX(0.95); }
+}
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-line { display: flex; align-items: center; gap: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress, .spinner, .toast { animation: none; }
+}
+@media (max-width: 640px) {
+  .toast-stack { right: 12px; left: 12px; bottom: 12px; width: auto; }
+}
+
+/* ── Organization settings ───────────────────────────────────────────────
+   Banner and key settings across the top, then two columns: approval and the danger zone on the left,
+   the sidebar menu (the tallest card) on the right. One column below 1000px. */
+.org-hero .org-hero-icon {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.18);
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  font-size: 22px;
+}
+.org-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.org-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.org-card { margin: 0; }
+.org-setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid #f1ebe4; }
+.org-setting-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.org-setting-text b { font-size: 13.5px; color: var(--ui-text); }
+.org-setting-text label { margin: 0; }
+.org-setting-text .muted { font-size: 12.5px; line-height: 1.45; }
+.org-number { width: 84px; text-align: center; flex-shrink: 0; }
+.org-card .pf-actions { padding-top: 12px; border-top: 1px solid #f1ebe4; }
+.org-danger { border-color: #f1c4c0; }
+.org-danger .kpi-icon { background: #fde2df; color: var(--danger); }
+.org-danger h3 { color: var(--danger); }
+.org-danger .pf-actions { border-top: 0; padding-top: 0; }
+.org-note { font-size: 12.5px; margin: -4px 0 4px; }
+.org-card .navedit-row { border-color: var(--ui-border); border-radius: 10px; }
+@media (max-width: 1000px) { .org-grid { grid-template-columns: 1fr; } }
+
+/* Card with an open ••• menu sits above its neighbours. The hover lift (transform) gives each card its own stacking
+   layer, which traps the menu inside the card, so later cards painted over it. Raising the whole card fixes that. */
+.kanban-card:has(.menu-list), .sop-tile:has(.menu-list), .kanban-card:focus-within, .sop-tile:focus-within { position: relative; z-index: 60; }

@@ -1,7 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+
+/** Sidebar menu customisation. The allowed items are checked in OrganizationService (NAV_ITEMS). */
+export class NavConfigDto {
+  @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(60, { each: true }) order!: string[];
+  @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(60, { each: true }) hidden!: string[];
+}
 
 export class UpdateSettingsDto {
+  /** `null` restores the built-in menu. */
+  @IsOptional() @ValidateNested() @Type(() => NavConfigDto) navConfig?: NavConfigDto | null;
   @IsOptional() @IsBoolean() approvalRequired?: boolean;
   @IsOptional() @IsInt() @Min(1) @Max(20) approvalQuorum?: number;
   @IsOptional() @IsBoolean() allowSelfApproval?: boolean;

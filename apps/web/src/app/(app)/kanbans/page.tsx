@@ -1,5 +1,7 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
@@ -7,13 +9,14 @@ import { KanbanCardMenu } from '@/components/KanbanCardMenu';
 import { splitTags, type Kanban } from '@/components/KanbanForm';
 import { Lightbox, type LightboxImage } from '@/components/Lightbox';
 import { OptButton } from '@/components/OptButton';
-import { Icons, SubbarRight } from '@/components/Subbar';
+import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { KanbanRevisionBadge } from '@/components/StatusBadge';
+import { Avatar } from '@/components/users/Avatar';
 import { Item } from '@/components/SopCardMenu';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtListDate } from '@/lib/format';
-import { blockedReasons, fetchKanbanInbox, kanbanTitle } from '@/lib/kanban';
+import { blockedReasons, fetchKanbanInbox, kanbanDescription, kanbanTitle } from '@/lib/kanban';
 import { hasPermission } from '@/lib/permissions';
 import type { KanbanInbox } from '@/lib/types';
 
@@ -43,7 +46,7 @@ type Dialog = { kind: 'import' } | { kind: 'bulk' } | null;
 
 export default function KanbansPage() {
   return (
-    <Suspense fallback={<p className="muted">Loading…</p>}>
+    <Suspense fallback={<Loading />}>
       <Kanbans />
     </Suspense>
   );
@@ -67,7 +70,7 @@ function Kanbans() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [popup, setPopup] = useState<LightboxImage | null>(null);
   const [popover, setPopover] = useState<'sort' | 'filter' | null>(null);
   const [showMore, setShowMore] = useState(false);
@@ -262,7 +265,7 @@ function Kanbans() {
         </div>
         <div className="menu">
           <button className={`icon-btn view-kebab ${showMore ? 'on' : ''}`} aria-label="More options" title="More options" onClick={() => setShowMore((o) => !o)}>
-            ⋮
+            <i className="fa-solid fa-ellipsis-vertical" aria-hidden />
           </button>
           {showMore && (
             <div className="menu-list icon-menu" onMouseLeave={() => setShowMore(false)}>
@@ -289,40 +292,51 @@ function Kanbans() {
         </div>
         {canEdit && (
           <Link href="/kanbans/new" className="opt-btn inline">
-            + Create New
+            <i className="fa-solid fa-plus" aria-hidden /> Create New
           </Link>
         )}
       </SubbarRight>
 
-      {selected.size > 0 && (
-        <div className="row select-bar">
-          <strong>{selected.size} selected</strong>
-          <button className="btn btn-sm" onClick={printSelected}>
-            Print cards
-          </button>
-          {canEdit && (
-            <button className="btn btn-sm" onClick={() => setDialog({ kind: 'bulk' })}>
-              Bulk edit
+      <SubbarLeft>
+        {selected.size > 0 && (
+          <div className="row select-bar select-bar--toolbar">
+            <strong>{selected.size} selected</strong>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                setSelected(new Set(items.map((i) => i.id)));
+                toast.success(`All ${items.length} matching cards are selected.`);
+              }}
+            >
+              Select all
             </button>
-          )}
-          <button className="btn btn-sm" onClick={() => setSelected(new Set(items.map((i) => i.id)))}>
-            Select all
-          </button>
-          <button className="btn btn-sm" onClick={() => setSelected(new Set())}>
-            Clear
-          </button>
-        </div>
-      )}
+            <button className="btn btn-sm" onClick={printSelected}>
+              Print cards
+            </button>
+            {canEdit && (
+              <button className="btn btn-sm" onClick={() => setDialog({ kind: 'bulk' })}>
+                Bulk edit
+              </button>
+            )}
+            <button className="btn btn-sm" onClick={() => setSelected(new Set())}>
+              Clear
+            </button>
+          </div>
+        )}
+      </SubbarLeft>
       {error && <div className="error">{error}</div>}
-      {notice && <div className="success">{notice}</div>}
 
       <div className={`sop-grid kanban-grid${selected.size ? ' selecting' : ''}`}>
         {items.map((k) => {
           const title = kanbanTitle(k);
+          const description = kanbanDescription(k);
+          const tags = splitTags(k.tag);
+          const accent = k.color || DEFAULT_COLOR;
           return (
             <div
               key={k.id}
-              className={`sop-card kanban-card${selected.has(k.id) ? ' selected' : ''}`}
+              className={`sop-card kanban-card kc-card${selected.has(k.id) ? ' selected' : ''}`}
+              style={{ borderLeftColor: accent }}
               onClick={() => router.push(`/kanbans/${k.id}`)}
             >
               <div className="kanban-thumb">
@@ -340,7 +354,9 @@ function Kanbans() {
                     }}
                   />
                 ) : (
-                  <span className="kanban-noimg" />
+                  <span className="kanban-noimg" aria-label="No picture">
+                    <i className="fa-solid fa-image" aria-hidden />
+                  </span>
                 )}
                 <input
                   type="checkbox"
@@ -352,26 +368,52 @@ function Kanbans() {
                 />
               </div>
               <div className="kanban-info">
+                <div className="kc-code">
+                  <span className="ui-code">{k.partCode}</span>
+                  <span className="kc-swatch" style={{ background: accent }} title={`Card colour ${accent}`} />
+                </div>
                 <div className="name" title={title}>
-                  {title}
+                  {description || k.partCode}
                 </div>
                 {k.openRevision && (
-                  <div className="line">
+                  <div className="kc-badges">
                     <KanbanRevisionBadge state={k.openRevision.state} rejected={k.openRevision.state === 'DRAFT' && !!k.openRevision.comment} blocked={blocked.has(k.id)} />
                   </div>
                 )}
-                <div className="line">Supplier Part No: <b>{k.supplierPartNo ?? 'N/A'}</b></div>
-                <div className="line">Created Date: <b>{fmtListDate(k.createdAt)}</b></div>
-                <div className="line">Tag: <b>{splitTags(k.tag).join(', ') || 'NO TAG'}</b></div>
-                <div className="line">Created By: <b>{k.createdBy?.name ?? 'N/A'}</b></div>
-                <div className="line">Last Modified: <b>{fmtListDate(k.updatedAt)}</b></div>
+                <ul className="sc-meta">
+                  <li title="Supplier part number">
+                    <i className="fa-solid fa-barcode" aria-hidden /> {k.supplierPartNo ?? <span className="muted">No supplier part no.</span>}
+                  </li>
+                  <li title="Created date">
+                    <i className="fa-solid fa-calendar-plus" aria-hidden /> Created {fmtListDate(k.createdAt)}
+                  </li>
+                </ul>
+                <div className="kc-tags">
+                  {tags.length === 0 ? (
+                    <span className="kc-tag is-empty">No tag</span>
+                  ) : (
+                    <>
+                      {tags.slice(0, 3).map((t) => (
+                        <span key={t} className="kc-tag">{t}</span>
+                      ))}
+                      {tags.length > 3 && <span className="kc-tag" title={tags.slice(3).join(', ')}>+{tags.length - 3}</span>}
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="sc-foot kc-foot">
+                {k.createdBy ? <Avatar name={k.createdBy.name} size={24} /> : <span className="sc-noavatar"><i className="fa-solid fa-user" aria-hidden /></span>}
+                <span className="sc-by">{k.createdBy?.name ?? 'Unknown author'}</span>
+                <span className="sc-date" title="Last modified">
+                  <i className="fa-solid fa-clock-rotate-left" aria-hidden /> {fmtListDate(k.updatedAt)}
+                </span>
               </div>
               <KanbanCardMenu
                 kanban={k}
                 canEdit={canEdit}
                 onError={setError}
                 onChanged={(msg) => {
-                  setNotice(msg ?? null);
+                  if (msg) toast.success(msg);
                   void load();
                 }}
               />
@@ -388,7 +430,7 @@ function Kanbans() {
             <ImportDialog
               onClose={(msg) => {
                 setDialog(null);
-                if (msg) setNotice(msg);
+                if (msg) toast.success(msg);
                 void load();
               }}
             />
@@ -398,7 +440,7 @@ function Kanbans() {
               ids={[...selected]}
               onClose={(msg) => {
                 setDialog(null);
-                if (msg) setNotice(msg);
+                if (msg) toast.success(msg);
                 void load();
               }}
             />

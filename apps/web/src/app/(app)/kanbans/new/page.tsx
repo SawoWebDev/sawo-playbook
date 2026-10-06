@@ -1,5 +1,6 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { KanbanEditor, type Kanban } from '@/components/KanbanForm';
@@ -8,7 +9,7 @@ import { errorMessage } from '@/lib/format';
 
 export default function NewKanbanPage() {
   return (
-    <Suspense fallback={<p className="muted">Loading…</p>}>
+    <Suspense fallback={<Loading />}>
       <NewKanban />
     </Suspense>
   );
@@ -28,6 +29,6 @@ function NewKanban() {
   }, [copyId]);
 
   if (error) return <div className="error">{error}</div>;
-  if (copyId && !source) return <p className="muted">Loading…</p>;
+  if (copyId && !source) return <Loading />;
   return <KanbanEditor copyFrom={source ?? undefined} />;
 }

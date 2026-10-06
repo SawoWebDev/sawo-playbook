@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { SubbarLeft, SubbarRight } from '@/components/Subbar';
+import { useToast } from '@/components/feedback/Toast';
 import { api, apiRaw } from '@/lib/api';
 import { errorMessage } from '@/lib/format';
 import type { KanbanOpenRevision, MediaItem, SopListItem } from '@/lib/types';
@@ -88,6 +89,7 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
   const [sops, setSops] = useState<SopListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -112,7 +114,10 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
       const res = await apiRaw('/media', { method: 'POST', rawBody: form });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setError(body.message ?? 'Upload failed');
-      else setPicture(body as MediaItem);
+      else {
+        setPicture(body as MediaItem);
+        toast.success('Photo uploaded.');
+      }
     } finally {
       setUploading(false);
     }
@@ -152,6 +157,7 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
     };
     try {
       await api(kanban ? `/kanbans/${kanban.id}` : '/kanbans', { method: kanban ? 'PATCH' : 'POST', body });
+      toast.success(kanban ? 'Draft saved. It goes live once approved or published.' : 'Kanban card created.');
       router.push(kanban ? `/kanbans/${kanban.id}` : '/kanbans');
     } catch (err) {
       setError(errorMessage(err));
@@ -167,7 +173,7 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
         Cancel
       </Link>
       <button type="button" className="btn btn-primary kanban-save" disabled={busy || uploading} onClick={() => void submit()}>
-        {busy ? 'Saving…' : 'Save draft'}
+        <i className="fa-solid fa-floppy-disk" aria-hidden /> {busy ? 'Saving…' : 'Save draft'}
       </button>
     </div>
   );
@@ -189,7 +195,7 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
     <>
       <SubbarLeft>
         <Link href="/kanbans" className="back-btn">
-          <span className="back-chev">‹</span> Back
+          <i className="fa-solid fa-chevron-left" aria-hidden /> Back
         </Link>
         <strong className="bar-title">{kanban ? `Edit Kanban — ${kanban.partCode}` : copyFrom ? `Duplicate Kanban — ${copyFrom.partCode}` : 'Add Kanban'}</strong>
       </SubbarLeft>
@@ -229,11 +235,11 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
           <div className="kanban-photo-hint">Drop or Paste Image</div>
           <input ref={fileInput} type="file" accept={PICTURE_TYPES.join(',')} hidden onChange={(e) => void uploadPicture(e.target.files?.[0])} />
           <button type="button" className="btn btn-primary btn-block" disabled={uploading} onClick={() => fileInput.current?.click()}>
-            Upload/Change Photo
+            <i className="fa-solid fa-camera" aria-hidden /> {picture ? 'Change photo' : 'Upload photo'}
           </button>
           {picture && (
             <button type="button" className="btn btn-block" onClick={() => setPicture(null)}>
-              Remove Photo
+              <i className="fa-solid fa-trash" aria-hidden /> Remove photo
             </button>
           )}
         </aside>

@@ -22,6 +22,16 @@ export class InviteDto {
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) groupIds?: string[];
 }
 
+/** Admin creates an active account now. The temporary password is replaced by the user at first sign-in. */
+export class CreateUserDto {
+  @IsString() @MinLength(1) @MaxLength(200) name!: string;
+  @IsEmail() @MaxLength(320) email!: string;
+  @IsIn(ASSIGNABLE_ROLES) role!: OrgRole;
+  /** Required for every non-Admin role; checked by the service, same rule as invitations. */
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) groupIds?: string[];
+  @IsString() @MinLength(10) @MaxLength(200) temporaryPassword!: string;
+}
+
 export class BulkInviteDto {
   /** Either structured rows… */
   @IsOptional()

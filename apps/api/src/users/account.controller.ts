@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { setRefreshCookie, sessionBody } from '../auth/auth.controller';
 import { AuthUser } from '../common/auth-user';
-import { CurrentUser, Public, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
+import { AllowWhilePasswordChangeRequired, CurrentUser, Public, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
 import { AccountService } from './account.service';
 import {
@@ -62,6 +62,7 @@ export class AccountController {
   @Post('profile/password')
   @HttpCode(200)
   @RequirePermission(Permission.Authenticated)
+  @AllowWhilePasswordChangeRequired()
   async changePassword(
     @CurrentUser() actor: AuthUser,
     @Body() dto: ChangePasswordDto,

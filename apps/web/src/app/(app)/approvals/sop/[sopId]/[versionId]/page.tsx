@@ -1,5 +1,6 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -65,7 +66,7 @@ export default function SopApprovalPage() {
   const [sop, setSop] = useState<SopHeader | null>(null);
   const [submitter, setSubmitter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
 
@@ -89,10 +90,9 @@ export default function SopApprovalPage() {
   const act = async (path: string, body: object, done: string) => {
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await api(`/sops/${sopId}/versions/${versionId}${path}`, { method: 'POST', body });
-      setNotice(done);
+      toast.success(done);
       setDialog(null);
       await load();
     } catch (e) {
@@ -128,7 +128,6 @@ export default function SopApprovalPage() {
         <span className={`badge ${STATUS_CLASS[detail.lifecycleState] ?? 'badge-blue'}`}>{stateLabel}</span>
       </div>
       {error && <div className="error" role="alert">{error}</div>}
-      {notice && <div className="success">{notice}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         <section className="card" aria-label="Workflow">

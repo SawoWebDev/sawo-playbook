@@ -35,10 +35,11 @@ export interface PublicUser {
   email: string;
   name: string;
   role: OrgRole;
+  passwordMustChange: boolean;
 }
 
 export function toPublicUser(u: User): PublicUser {
-  return { id: u.id, organizationId: u.organizationId, email: u.email, name: u.name, role: u.orgRole };
+  return { id: u.id, organizationId: u.organizationId, email: u.email, name: u.name, role: u.orgRole, passwordMustChange: u.passwordMustChange };
 }
 
 // Used to equalise timing when the email does not exist.

@@ -1,5 +1,7 @@
 'use client';
 
+import { useToast } from '@/components/feedback/Toast';
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
@@ -38,7 +40,7 @@ export default function UserDetailPage() {
   const [person, setPerson] = useState<UserDetail | null>(null);
   const [allGroups, setAllGroups] = useState<GroupOption[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
   const [name, setName] = useState('');
@@ -65,10 +67,9 @@ export default function UserDetailPage() {
   const run = async (fn: () => Promise<unknown>, done: string) => {
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await fn();
-      setNotice(done);
+      toast.success(done);
       await load();
     } catch (e) {
       setError(errorMessage(e));
@@ -101,11 +102,10 @@ export default function UserDetailPage() {
     const removed = [...before].filter((g) => !after.has(g));
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       for (const g of added) await api(`/groups/${g}/members`, { method: 'POST', body: { userIds: [id] } });
       for (const g of removed) await api(`/groups/${g}/members/${id}`, { method: 'DELETE' });
-      setNotice('Groups saved.');
+      toast.success('Groups saved.');
       await load();
     } catch (e) {
       setError(errorMessage(e));
@@ -128,7 +128,6 @@ export default function UserDetailPage() {
   if (!canManage) {
     return (
       <>
-        <h1>User Management</h1>
         <UserManagementTabs />
         <p className="muted">Only Admins can manage users.</p>
       </>
@@ -137,12 +136,10 @@ export default function UserDetailPage() {
 
   return (
     <>
-      <h1>User Management</h1>
       <UserManagementTabs />
       <p style={{ marginTop: 0 }}><Link href="/users">← All people</Link></p>
       {error && <div className="error" role="alert">{error}</div>}
-      {notice && <div className="success">{notice}</div>}
-      {!person && !error && <p className="muted" role="status">Loading…</p>}
+      {!person && !error && <Loading />}
 
       {person && (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
@@ -253,7 +250,7 @@ export default function UserDetailPage() {
             <h3 style={{ marginTop: 0 }}>What this person can do</h3>
             <p className="muted" style={{ margin: 0 }}>
               Their permissions come from their role and the organisation&apos;s role settings. The API does not expose another person&apos;s effective permissions, so this screen does not list them.
-              See <Link href="/roles">Roles &amp; Permissions</Link> for each role&apos;s permissions.
+              See <Link href="/roles">Roles / Permissions</Link> for each role&apos;s permissions.
             </p>
           </section>
         </div>

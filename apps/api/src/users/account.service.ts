@@ -51,7 +51,8 @@ export class AccountService {
     if (current === next) throw new BadRequestException('New password must differ from the current one');
     const passwordHash = await argon2.hash(next);
     const updated = await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+      // Setting a password also clears a temporary-password requirement.
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash, passwordMustChange: false } });
       await this.tokens.revokeAllForUser(user.id, 'password_change', tx);
       await this.audit.record(
         { action: AuditAction.PasswordReset, organizationId: user.organizationId, actorId: user.id, entityType: 'user', entityId: user.id, metadata: { via: 'self_service' }, ...meta },

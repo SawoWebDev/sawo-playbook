@@ -1,9 +1,11 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/format';
+import { Avatar } from '@/components/users/Avatar';
 
 interface Summary {
   scope: 'organization' | 'own';
@@ -17,11 +19,18 @@ interface Summary {
 }
 
 const SERIES = [
-  { key: 'views', label: 'SOP views', color: 'var(--primary)' },
-  { key: 'edits', label: 'Edits', color: '#a97d53' },
-  { key: 'created', label: 'Created', color: 'var(--success)' },
-  { key: 'checklists', label: 'Checklists', color: 'var(--warning)' },
+  { key: 'views', label: 'SOP views', color: '#8c5e38' },
+  { key: 'edits', label: 'Edits', color: '#c9a882' },
+  { key: 'created', label: 'Created', color: '#5a7d6b' },
+  { key: 'checklists', label: 'Checklists', color: '#d9a441' },
 ] as const;
+
+const PERIODS = [
+  { days: 7, label: '7 days' },
+  { days: 30, label: '30 days' },
+  { days: 90, label: '90 days' },
+  { days: 365, label: '12 months' },
+];
 
 function DailyChart({ daily, from, to }: { daily: Summary['daily']; from: string; to: string }) {
   const byDay = new Map(daily.map((d) => [d.day.slice(0, 10), d]));
@@ -33,6 +42,9 @@ function DailyChart({ daily, from, to }: { daily: Summary['daily']; from: string
   const bw = w / Math.max(days.length, 1);
   return (
     <svg viewBox={`0 0 ${w} ${hgt + 20}`} width="100%" role="img" aria-label="Daily activity">
+      {[0.25, 0.5, 0.75].map((f) => (
+        <line key={f} x1={0} x2={w} y1={hgt - f * (hgt - 10)} y2={hgt - f * (hgt - 10)} stroke="#f1ebe4" />
+      ))}
       {days.map((day, i) => {
         const d = byDay.get(day);
         let y = hgt;
@@ -45,18 +57,41 @@ function DailyChart({ daily, from, to }: { daily: Summary['daily']; from: string
               const v = d ? d[s.key] : 0;
               const bh = (v / max) * (hgt - 10);
               y -= bh;
-              return v ? <rect key={s.key} x={i * bw + 1} y={y} width={Math.max(bw - 2, 1)} height={bh} fill={s.color} rx={1} /> : null;
+              return v ? <rect key={s.key} x={i * bw + 1} y={y} width={Math.max(bw - 2, 1)} height={bh} fill={s.color} rx={2} /> : null;
             })}
             {(i === 0 || i === days.length - 1 || i % 7 === 0) && (
-              <text x={i * bw + bw / 2} y={hgt + 14} fontSize={10} textAnchor="middle" fill="var(--muted)">
+              <text x={i * bw + bw / 2} y={hgt + 14} fontSize={10} textAnchor="middle" fill="#9a8c7e">
                 {day.slice(5)}
               </text>
             )}
           </g>
         );
       })}
-      <line x1={0} x2={w} y1={hgt} y2={hgt} stroke="var(--border)" />
+      <line x1={0} x2={w} y1={hgt} y2={hgt} stroke="#e7dfd5" />
     </svg>
+  );
+}
+
+/** A ranked list with a bar showing each row's share of the top value. */
+function Ranked({ rows }: { rows: { key: string; label: React.ReactNode; value: number }[] }) {
+  const top = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <ol className="an-rank">
+      {rows.map((r, i) => (
+        <li key={r.key}>
+          <span className="an-rank-n">{i + 1}</span>
+          <div className="an-rank-body">
+            <div className="an-rank-row">
+              <span className="an-rank-label">{r.label}</span>
+              <span className="an-rank-value">{r.value}</span>
+            </div>
+            <div className="ui-progress">
+              <span style={{ width: `${Math.round((r.value / top) * 100)}%` }} />
+            </div>
+          </div>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -73,97 +108,122 @@ export default function AnalyticsPage() {
       .catch((e) => setError(errorMessage(e)));
   }, [days]);
 
-  if (error) return <div className="error">{error}</div>;
-  if (!s) return <p className="muted">Loading…</p>;
+  const head = (
+    <div className="page-head">
+      <span className="grp-chip">
+        <i className={`fa-solid ${s?.scope === 'own' ? 'fa-user' : 'fa-building'}`} aria-hidden style={{ marginRight: 6 }} />
+        {s?.scope === 'own' ? 'Your activity' : 'Whole organization'}
+      </span>
+      <div className="page-head-actions">
+        <div className="ui-seg" role="group" aria-label="Period">
+          {PERIODS.map((p) => (
+            <button key={p.days} type="button" className={days === p.days ? 'is-on' : ''} aria-pressed={days === p.days} onClick={() => setDays(p.days)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
-  const tiles: [string, number | string][] = [
-    ['Published SOPs', s.totals.sopsByStatus.published ?? 0],
-    ['Drafts / in review', (s.totals.sopsByStatus.draft ?? 0) + (s.totals.sopsByStatus.pending_approval ?? 0) + (s.totals.sopsByStatus.approved ?? 0)],
-    ['Kanban cards', s.totals.kanbans],
-    ['Completed checklists', s.totals.completedChecklists],
+  if (error) return <div className="error">{error}</div>;
+  if (!s) return <>{head}<Loading /></>;
+
+  const tiles: { label: string; value: number; icon: string }[] = [
+    { label: 'Published SOPs', value: s.totals.sopsByStatus.published ?? 0, icon: 'fa-file-circle-check' },
+    {
+      label: 'Drafts / in review',
+      value: (s.totals.sopsByStatus.draft ?? 0) + (s.totals.sopsByStatus.pending_approval ?? 0) + (s.totals.sopsByStatus.approved ?? 0),
+      icon: 'fa-file-pen',
+    },
+    { label: 'Kanban cards', value: s.totals.kanbans, icon: 'fa-table-columns' },
+    { label: 'Completed checklists', value: s.totals.completedChecklists, icon: 'fa-list-check' },
   ];
-  if (s.totals.activeUsers !== null) tiles.push(['Active users', s.totals.activeUsers]);
+  if (s.totals.activeUsers !== null) tiles.push({ label: 'Active users', value: s.totals.activeUsers, icon: 'fa-users' });
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 12 }}>
-        <h1 style={{ margin: 0 }}>Analytics</h1>
-        <span className="badge">{s.scope === 'own' ? 'Your activity' : 'Whole organization'}</span>
-        <div className="spacer" />
-        <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 160 }}>
-          <option value={7}>Last 7 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={90}>Last 90 days</option>
-          <option value={365}>Last 12 months</option>
-        </select>
-      </div>
+      {head}
 
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', marginBottom: 16 }}>
-        {tiles.map(([label, v]) => (
-          <div key={label} className="card">
-            <div className="muted" style={{ fontSize: 12 }}>
-              {label}
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 700 }}>{v}</div>
+      <div className="kpi-grid">
+        {tiles.map((t) => (
+          <div key={t.label} className="kpi">
+            <span className="kpi-icon"><i className={`fa-solid ${t.icon}`} aria-hidden /></span>
+            <span className="kpi-text">
+              <span className="kpi-value">{t.value}</span>
+              <span className="kpi-label">{t.label}</span>
+            </span>
           </div>
         ))}
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <strong>Daily activity</strong>
-          <div className="spacer" />
-          {SERIES.map((x) => (
-            <span key={x.key} className="row" style={{ gap: 4, fontSize: 12 }}>
-              <span style={{ width: 10, height: 10, background: x.color, borderRadius: 2, display: 'inline-block' }} /> {x.label}
-            </span>
-          ))}
+      <section className="card an-chart">
+        <div className="an-card-head">
+          <h3>Daily activity</h3>
+          <div className="an-legend">
+            {SERIES.map((x) => (
+              <span key={x.key}>
+                <span className="an-dot" style={{ background: x.color }} /> {x.label}
+              </span>
+            ))}
+          </div>
         </div>
         <DailyChart daily={s.daily} from={s.from} to={s.to} />
-      </div>
+      </section>
 
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Most viewed SOPs</h3>
-          {s.topSops.length === 0 && <p className="muted">No views in this period.</p>}
-          <ol style={{ margin: 0, paddingLeft: 20 }}>
-            {s.topSops.map((t) => (
-              <li key={t.sop.id}>
-                <Link href={`/sops/${t.sop.id}`}>
-                  {t.sop.referenceNo} — {t.sop.name}
-                </Link>{' '}
-                <span className="muted">({t.views})</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-        {s.scope === 'organization' && (
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>Most active users</h3>
-            <ol style={{ margin: 0, paddingLeft: 20 }}>
-              {s.topActors.map((t) => (
-                <li key={t.user.id}>
-                  {t.user.name} <span className="muted">({t.events})</span>
-                </li>
-              ))}
-            </ol>
+      <div className="an-grid">
+        <section className="card">
+          <div className="an-card-head">
+            <h3>Most viewed SOPs</h3>
           </div>
+          {s.topSops.length === 0 ? (
+            <p className="muted">No views in this period.</p>
+          ) : (
+            <Ranked
+              rows={s.topSops.map((t) => ({
+                key: t.sop.id,
+                value: t.views,
+                label: (
+                  <Link href={`/sops/${t.sop.id}`} title={t.sop.name}>
+                    <span className="muted">{t.sop.referenceNo}</span> {t.sop.name}
+                  </Link>
+                ),
+              }))}
+            />
+          )}
+        </section>
+        {s.scope === 'organization' && (
+          <section className="card">
+            <div className="an-card-head">
+              <h3>Most active users</h3>
+            </div>
+            {s.topActors.length === 0 ? (
+              <p className="muted">No activity in this period.</p>
+            ) : (
+              <Ranked
+                rows={s.topActors.map((t) => ({
+                  key: t.user.id,
+                  value: t.events,
+                  label: (
+                    <span className="an-user">
+                      <Avatar name={t.user.name} size={22} /> {t.user.name}
+                    </span>
+                  ),
+                }))}
+              />
+            )}
+          </section>
         )}
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Events</h3>
-          <table className="table" style={{ border: 0 }}>
-            <tbody>
-              {s.events.map((e) => (
-                <tr key={e.eventType}>
-                  <td>
-                    <code>{e.eventType}</code>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>{e.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <section className="card">
+          <div className="an-card-head">
+            <h3>Events</h3>
+          </div>
+          {s.events.length === 0 ? (
+            <p className="muted">No events in this period.</p>
+          ) : (
+            <Ranked rows={s.events.map((e) => ({ key: e.eventType, value: e.count, label: <span className="ui-code">{e.eventType}</span> }))} />
+          )}
+        </section>
       </div>
     </>
   );

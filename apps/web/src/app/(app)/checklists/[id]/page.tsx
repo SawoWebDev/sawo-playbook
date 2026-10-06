@@ -1,5 +1,7 @@
 'use client';
 
+import { Loading } from '@/components/feedback/Loading';
+import { useToast } from '@/components/feedback/Toast';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -31,6 +33,7 @@ export default function ChecklistRunPage() {
   const [comments, setComments] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -47,7 +50,7 @@ export default function ChecklistRunPage() {
   }, [load]);
 
   if (error && !data) return <div className="error">{error}</div>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <Loading />;
 
   const editable = data.status === 'in_progress' && data.operator?.id === user?.id;
   const byStep = new Map(data.responses.map((r) => [r.stepId, r]));
@@ -82,6 +85,7 @@ export default function ChecklistRunPage() {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) return setError(body.message ?? 'Upload failed');
     await respond(stepId, { mediaAssetId: body.id });
+    toast.success('Photo attached.');
   }
 
   async function finish(action: 'complete' | 'abandon') {
@@ -89,6 +93,7 @@ export default function ChecklistRunPage() {
     setError(null);
     try {
       setData(await api<ChecklistDetail>(`/checklists/${id}/${action}`, { method: 'POST' }));
+      toast.success(action === 'complete' ? 'Checklist completed.' : 'Checklist abandoned.');
     } catch (e) {
       setError(errorMessage(e));
     } finally {
