@@ -142,7 +142,7 @@ export default function UserDetailPage() {
       {!person && !error && <Loading />}
 
       {person && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+        <div className="person-cards">
           <section className="card" aria-label="Identity">
             <div className="row" style={{ marginBottom: 10 }}>
               <h3 style={{ margin: 0 }}>{person.name}</h3>
@@ -246,7 +246,7 @@ export default function UserDetailPage() {
             </p>
           </section>
 
-          <section className="card" aria-label="Effective permissions" style={{ gridColumn: '1 / -1' }}>
+          <section className="card" aria-label="Effective permissions">
             <h3 style={{ marginTop: 0 }}>What this person can do</h3>
             <p className="muted" style={{ margin: 0 }}>
               Their permissions come from their role and the organisation&apos;s role settings. The API does not expose another person&apos;s effective permissions, so this screen does not list them.

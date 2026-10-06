@@ -421,6 +421,7 @@ function Kanbans() {
           );
         })}
       </div>
+      {!data && !error && <Loading label="Loading kanban cards…" />}
       {data && items.length === 0 && <p className="muted">No kanban cards found.</p>}
       {popup && <Lightbox images={[popup]} start={0} onClose={() => setPopup(null)} />}
 

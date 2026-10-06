@@ -65,6 +65,9 @@ function SopsList() {
   const [includeSub, setIncludeSub] = useState(params.get('sub') === '1');
   const [folders, setFolders] = useState<FolderRow[]>([]);
   const [items, setItems] = useState<SopListItem[]>([]);
+  /** False until the first page has arrived, so the list shows a loading state rather than "No procedures". */
+  const [loaded, setLoaded] = useState(false);
+  const [paging, setPaging] = useState(false);
   const [total, setTotal] = useState(0);
   const [roster, setRoster] = useState<Creator[]>([]);
   const [search, setSearch] = useState('');
@@ -97,6 +100,7 @@ function SopsList() {
       if (creatorKey) q.set('createdBy', creatorKey);
       if (folder) q.set('folderId', folder);
       if (folder && folder !== 'root' && includeSub) q.set('includeSubfolders', 'true');
+      setPaging(true);
       try {
         const r = await api<{ total: number; items: SopListItem[]; facets: { creators: Creator[] } }>(`/sops?${q}`);
         setItems((prev) => (offset ? [...prev, ...r.items] : r.items));
@@ -104,6 +108,9 @@ function SopsList() {
         if (!offset) setRoster(r.facets.creators);
       } catch (e) {
         setError(errorMessage(e));
+      } finally {
+        setLoaded(true);
+        setPaging(false);
       }
     },
     [search, status, type, checklistOnly, creatorKey, sort, folder, includeSub],
@@ -453,7 +460,9 @@ function SopsList() {
       </SubbarLeft>
       {error && <div className="error">{error}</div>}
 
-      {items.length === 0 ? (
+      {!loaded ? (
+        <Loading label="Loading procedures…" />
+      ) : items.length === 0 ? (
         <p className="muted">No procedures found.</p>
       ) : view === 'grid' ? (
         <div className={`sop-grid${selected.size ? ' selecting' : ''}`}>
@@ -567,9 +576,13 @@ function SopsList() {
       )}
       {hasMore && (
         <div style={{ textAlign: 'center', marginTop: 16 }}>
-          <button className="btn" onClick={() => load(items.length)}>
-            Load more ({total - items.length} remaining)
-          </button>
+          {paging ? (
+            <Loading label="Loading more SOPs…" />
+          ) : (
+            <button className="btn" onClick={() => load(items.length)}>
+              Load more ({total - items.length} remaining)
+            </button>
+          )}
           <div ref={sentinel} aria-hidden style={{ height: 1 }} />
         </div>
       )}

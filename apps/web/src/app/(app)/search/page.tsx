@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
+import { Loading } from '@/components/feedback/Loading';
 import { SopStatusBadge } from '@/components/StatusBadge';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/format';
@@ -39,7 +40,7 @@ function SearchResults() {
       <h1>Search results for “{q}”</h1>
       {error && <div className="error">{error}</div>}
       {!r ? (
-        <p className="muted">Searching…</p>
+        <Loading label="Searching…" />
       ) : (
         <>
           <h2>SOPs ({r.sops.length})</h2>

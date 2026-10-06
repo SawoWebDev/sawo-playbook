@@ -91,6 +91,7 @@ function Backups() {
   const [jobId, setJobId] = useState<string | null>(params.get('job'));
   const [job, setJob] = useState<Job | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobsLoaded, setJobsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const attachedOnce = useRef(false);
@@ -101,6 +102,8 @@ function Backups() {
       setJobs(await api<Job[]>('/backups'));
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setJobsLoaded(true);
     }
   }, []);
 
@@ -272,7 +275,9 @@ function Backups() {
           <h3>History</h3>
         </div>
         <div className="um-card">
-          {jobs.length === 0 ? (
+          {!jobsLoaded ? (
+            <Loading label="Loading backup history…" />
+          ) : jobs.length === 0 ? (
             <div className="um-empty">
               <i className="fa-solid fa-box-archive" aria-hidden />
               <p>No backups yet. Create one with the button above.</p>
