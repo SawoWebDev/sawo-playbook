@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import { SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { errorMessage } from '@/lib/format';
-import type { MediaItem, SopListItem } from '@/lib/types';
+import type { KanbanOpenRevision, MediaItem, SopListItem } from '@/lib/types';
 
 export interface Kanban {
   id: string;
@@ -37,6 +37,8 @@ export interface Kanban {
   createdAt: string;
   createdBy: { id: string; name: string } | null;
   updatedAt: string;
+  /** Set by GET /kanbans and GET /kanbans/:id only. Null when the card has no open revision. */
+  openRevision?: KanbanOpenRevision | null;
 }
 
 type FormState = Record<string, string>;
@@ -165,7 +167,7 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
         Cancel
       </Link>
       <button type="button" className="btn btn-primary kanban-save" disabled={busy || uploading} onClick={() => void submit()}>
-        {busy ? 'Saving…' : 'Save'}
+        {busy ? 'Saving…' : 'Save draft'}
       </button>
     </div>
   );
@@ -320,7 +322,12 @@ export function KanbanEditor({ kanban, copyFrom }: { kanban?: Kanban; copyFrom?:
         </div>
       </form>
 
-      <div className="kanban-footer">{actions}</div>
+      <div className="kanban-footer">
+        <span className="muted" style={{ marginRight: 'auto', fontSize: 13 }}>
+          Saving creates a draft. The card on the Kanban list changes only after it is approved and published.
+        </span>
+        {actions}
+      </div>
     </>
   );
 }

@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { buildTree, flatten, type FolderNode, type FolderRow } from '@/lib/folders';
 import { errorMessage } from '@/lib/format';
-import { allowed } from '@/lib/permissions';
+import { hasPermission } from '@/lib/permissions';
 
 export default function FoldersPage() {
   const { user } = useAuth();
@@ -15,7 +15,7 @@ export default function FoldersPage() {
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newParent, setNewParent] = useState('');
-  const canEdit = allowed(user?.role, 'editFolders');
+  const canEdit = hasPermission(user, 'folders.edit');
 
   const load = useCallback(async () => {
     try {

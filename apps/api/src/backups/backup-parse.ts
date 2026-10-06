@@ -135,8 +135,8 @@ export function parseMedia(raw: unknown): BackupMediaEntry[] {
   });
 }
 
-const LIFECYCLES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PUBLISHED'] as const;
-const ACTIVE: readonly BackupLifecycle[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
+const LIFECYCLES = ['DRAFT', 'PENDING_PRE_APPROVAL', 'PENDING_APPROVAL', 'APPROVED', 'PUBLISHED'] as const;
+const ACTIVE: readonly BackupLifecycle[] = ['DRAFT', 'PENDING_PRE_APPROVAL', 'PENDING_APPROVAL', 'APPROVED'];
 
 function parseStep(raw: unknown, where: string): BackupStep {
   const o = obj(raw, where);

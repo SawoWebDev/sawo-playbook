@@ -14,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { orgIsUsable } from './org-status';
 import { AccessTokenPayload, AuthUser } from './auth-user';
 import { IS_PUBLIC_KEY, PERMISSION_KEY } from './decorators';
-import { Permission, roleHasPermission } from './permissions';
+import { effectivePermissions, Permission } from './permissions';
 
 /**
  * Global guard (§7.3 rules 1, 2, 7, 9):
@@ -44,7 +44,7 @@ export class AuthorizationGuard implements CanActivate {
     const user = await this.authenticate(req);
     req.user = user;
 
-    if (!roleHasPermission(user.role, permission)) {
+    if (!user.permissions.has(permission)) {
       throw new ForbiddenException('Insufficient permission');
     }
     return true;
@@ -65,7 +65,10 @@ export class AuthorizationGuard implements CanActivate {
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { organization: { select: { status: true } } },
+      include: {
+        organization: { select: { status: true, settings: { select: { rolePermissions: true } } } },
+        groupMemberships: { select: { groupId: true } },
+      },
     });
     if (
       !user ||
@@ -76,12 +79,15 @@ export class AuthorizationGuard implements CanActivate {
     ) {
       throw new UnauthorizedException();
     }
+    // Permissions are read from the DB on every request, so an admin's change takes effect immediately.
     return {
       id: user.id,
       organizationId: user.organizationId,
       role: user.orgRole,
       email: user.email,
       name: user.name,
+      permissions: effectivePermissions(user.orgRole, user.organization.settings?.rolePermissions),
+      groupIds: user.groupMemberships.map((m) => m.groupId),
     };
   }
 }

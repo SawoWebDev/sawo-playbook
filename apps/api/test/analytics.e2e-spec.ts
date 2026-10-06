@@ -62,7 +62,7 @@ describe('analytics summary', () => {
     const sum = ed.body.events.reduce((n: number, e: { count: number }) => n + e.count, 0);
     expect(sum).toBe(edEvents);
 
-    await ctx.http().get('/api/analytics/summary').set(as(a, 'APPROVER')).expect(403);
+    await ctx.http().get('/api/analytics/summary').set(as(a, 'APPROVER')).expect(403); // analytics is not part of approval
     await ctx.http().get('/api/analytics/summary').set(as(a, 'OPERATOR')).expect(403);
     await ctx.http().get('/api/analytics/summary?from=2026-01-01&to=2025-01-01').set(as(a, 'ADMIN')).expect(400);
   });
@@ -93,7 +93,8 @@ describe('full-text search (§14)', () => {
     await h.saveSteps(a, draft.sopId, draft.versionId, [{ description: 'Confidential zeppelin step' }]);
     draftOnlyId = draft.sopId;
 
-    await ctx.http().post('/api/kanbans').set(as(a, 'EDITOR')).send({ partCode: 'HYD-SEAL-42', partDescription: 'Piston seal kit', supplier: 'Parker', tag: 'hydraulic', orderingType: 'email', orderingEmail: 'a@b.co' }).expect(201);
+    const hyd = await ctx.http().post('/api/kanbans').set(as(a, 'EDITOR')).send({ partCode: 'HYD-SEAL-42', partDescription: 'Piston seal kit', supplier: 'Parker', tag: 'hydraulic', orderingType: 'email', orderingEmail: 'a@b.co' }).expect(201);
+    await ctx.http().post(`/api/kanbans/revisions/${hyd.body.id}/publish`).set(as(a, 'APPROVER')).expect(200); // live only once published
   });
 
   const search = (role: 'OPERATOR' | 'EDITOR', q: string, t = a) => ctx.http().get(`/api/search?q=${encodeURIComponent(q)}`).set(as(t, role)).expect(200);
@@ -132,7 +133,7 @@ describe('full-text search (§14)', () => {
       expect((await search('OPERATOR', q)).body.kanbans.map((k: { partCode: string }) => k.partCode)).toContain('HYD-SEAL-42');
     }
     const k = await ctx.prisma.kanban.findFirstOrThrow({ where: { organizationId: a.organizationId, partCode: 'HYD-SEAL-42' } });
-    await ctx.http().delete(`/api/kanbans/${k.id}`).set(as(a, 'EDITOR')).expect(204);
+    await ctx.http().delete(`/api/kanbans/${k.id}`).set(as(a, 'APPROVER')).expect(204);
     expect((await search('OPERATOR', 'piston')).body.kanbans).toEqual([]);
   });
 

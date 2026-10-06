@@ -55,6 +55,7 @@ async function saveSteps(t: Tenant, sopId: string, versionId: string, steps: obj
 /** Drives a version through submit → quorum approvals → publish. Quorum is 3 by default. */
 async function publishFlow(t: Tenant, sopId: string, versionId: string) {
   await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(t, 'EDITOR')).send({}).expect(200);
+  await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/pre-approve`).set(as(t, 'PRE_APPROVER')).send({}).expect(200);
   for (const auth of [t.reviewer.auth, as(t, 'ADMIN'), as(t, 'OWNER')]) {
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(auth).send({ decision: 'approved' }).expect(200);
   }
@@ -86,7 +87,7 @@ describe('SOP creation (§17 worked example)', () => {
     expect(sop.qrPublicToken.length).toBeGreaterThanOrEqual(20);
   });
 
-  it.each(['OPERATOR', 'TRAINER', 'APPROVER'] as const)('%s cannot create (403)', async (role) => {
+  it.each(['OPERATOR', 'TRAINER', 'PRE_APPROVER'] as const)('%s cannot create (403)', async (role) => {
     await ctx.http().post('/api/sops').set(as(a, role)).send({ name: 'x' }).expect(403);
   });
 
@@ -200,11 +201,15 @@ describe('approval state machine (§6.3)', () => {
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(a, 'EDITOR')).send({}).expect(400); // no steps
     await saveSteps(a, sopId, versionId, [{ description: 'Do it' }]);
     const sub = await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(a, 'EDITOR')).send({ changeSummary: 'first' }).expect(200);
-    expect(sub.body.lifecycleState).toBe('PENDING_APPROVAL');
+    expect(sub.body.lifecycleState).toBe('PENDING_PRE_APPROVAL');
     expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).status).toBe('pending_approval');
 
     // steps are frozen while under review
     expect((await saveSteps(a, sopId, versionId, [{ description: 'sneaky' }])).status).toBe(409);
+    // pre-approval comes first: a Pre Approver cannot give the final decision, and must pre-approve
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'PRE_APPROVER')).send({ decision: 'approved' }).expect(403);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/pre-approve`).set(as(a, 'PRE_APPROVER')).send({}).expect(200);
+    expect((await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: versionId } })).lifecycleState).toBe('PENDING_APPROVAL');
 
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'ADMIN')).send({ decision: 'approved' }).expect(200);
@@ -215,10 +220,11 @@ describe('approval state machine (§6.3)', () => {
     expect(v.lifecycleState).toBe('APPROVED');
     expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).status).toBe('approved');
 
-    // Viewers (and the retired Approver role) cannot publish; Editors can
+    // Viewers, Pre Approvers and Editors cannot publish; an Approver (publish permission) can
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'OPERATOR')).expect(403);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'APPROVER')).expect(403);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'EDITOR')).expect(200);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'PRE_APPROVER')).expect(403);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'EDITOR')).expect(403);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/publish`).set(as(a, 'APPROVER')).expect(200);
     const sop = await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } });
     expect(sop.status).toBe('published');
     expect(sop.currentPublishedVersionId).toBe(versionId);
@@ -227,11 +233,11 @@ describe('approval state machine (§6.3)', () => {
     expect(actions).toEqual(expect.arrayContaining(['sop.version.submitted', 'sop.version.approved', 'sop.version.published']));
   });
 
-  it('Viewers and retired roles cannot approve; the submitter cannot self-approve; publishing a non-APPROVED version is 409', async () => {
+  it('Viewers and Pre Approvers cannot approve; the submitter cannot self-approve; publishing a non-APPROVED version is 409', async () => {
     const { sopId, versionId } = await createSop(a);
     await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(a, 'EDITOR')).send({}).expect(200);
-    for (const role of ['OPERATOR', 'APPROVER', 'TRAINER'] as const) {
+    for (const role of ['OPERATOR', 'PRE_APPROVER', 'TRAINER'] as const) {
       await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, role)).send({ decision: 'approved' }).expect(403);
     }
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'EDITOR')).send({ decision: 'approved' }).expect(403); // own submission
@@ -242,10 +248,12 @@ describe('approval state machine (§6.3)', () => {
     const { sopId, versionId } = await createSop(a);
     await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(a, 'ADMIN')).send({}).expect(200);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'ADMIN')).send({ decision: 'approved' }).expect(403);
+    // the submitter may not pre-approve their own submission
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/pre-approve`).set(as(a, 'ADMIN')).send({}).expect(403);
 
     await ctx.prisma.organizationSettings.update({ where: { organizationId: a.organizationId }, data: { allowSelfApproval: true } });
     try {
+      await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/pre-approve`).set(as(a, 'ADMIN')).send({}).expect(200);
       await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(as(a, 'ADMIN')).send({ decision: 'approved' }).expect(200);
     } finally {
       await ctx.prisma.organizationSettings.update({ where: { organizationId: a.organizationId }, data: { allowSelfApproval: false } });
@@ -256,6 +264,7 @@ describe('approval state machine (§6.3)', () => {
     const { sopId, versionId } = await createSop(a);
     await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(a, 'EDITOR')).send({}).expect(200);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/pre-approve`).set(as(a, 'PRE_APPROVER')).send({}).expect(200);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(409);
   });
@@ -265,6 +274,7 @@ describe('approval state machine (§6.3)', () => {
     await saveSteps(a, sopId, versionId, [{ description: 'x' }]);
     const url = `/api/sops/${sopId}/versions/${versionId}`;
     await ctx.http().post(`${url}/submit`).set(as(a, 'EDITOR')).send({}).expect(200);
+    await ctx.http().post(`${url}/pre-approve`).set(as(a, 'PRE_APPROVER')).send({}).expect(200);
     await ctx.http().post(`${url}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`${url}/decisions`).set(as(a, 'ADMIN')).send({ decision: 'approved' }).expect(200);
     await ctx.http().post(`${url}/decisions`).set(as(a, 'OWNER')).send({ decision: 'rejected' }).expect(400); // comment required
@@ -276,12 +286,14 @@ describe('approval state machine (§6.3)', () => {
     await saveSteps(a, sopId, versionId, [{ description: 'Wear PPE' }, { description: 'x' }]);
     const resub = await ctx.http().post(`${url}/submit`).set(as(a, 'EDITOR')).send({}).expect(200);
     expect(resub.body.currentApprovalRound).toBe(2);
+    await ctx.http().post(`${url}/pre-approve`).set(as(a, 'PRE_APPROVER')).send({}).expect(200);
 
     // one new approval in round 2 must not reach quorum even though round 1 had two approvals
     await ctx.http().post(`${url}/decisions`).set(a.reviewer.auth).send({ decision: 'approved' }).expect(200);
     const hist = await ctx.http().get(`${url}/approvals`).set(as(a, 'EDITOR')).expect(200);
     expect(hist.body.approvedInCurrentRound).toBe(1);
-    expect(hist.body.decisions.filter((d: { round: number }) => d.round === 1)).toHaveLength(3);
+    // round 1 holds the pre-approval, two final approvals and the rejection
+    expect(hist.body.decisions.filter((d: { round: number }) => d.round === 1)).toHaveLength(4);
     expect((await ctx.prisma.sopVersion.findUniqueOrThrow({ where: { id: versionId } })).lifecycleState).toBe('PENDING_APPROVAL');
 
     await ctx.http().post(`${url}/decisions`).set(as(a, 'ADMIN')).send({ decision: 'approved' }).expect(200);
@@ -291,11 +303,12 @@ describe('approval state machine (§6.3)', () => {
 
   it('Invariant #20: a valid decision still counts after the approver is demoted; demoted user cannot vote', async () => {
     const t = await createTenant(ctx, 'inv20');
-    const extra = await t.addUser('EDITOR', 'editor3');
+    const extra = await t.addUser('APPROVER', 'approver3');
     const { sopId, versionId } = await createSop(t);
     await saveSteps(t, sopId, versionId, [{ description: 'x' }]);
     const url = `/api/sops/${sopId}/versions/${versionId}`;
     await ctx.http().post(`${url}/submit`).set(as(t, 'EDITOR')).send({}).expect(200);
+    await ctx.http().post(`${url}/pre-approve`).set(as(t, 'PRE_APPROVER')).send({}).expect(200);
     await ctx.http().post(`${url}/decisions`).set(t.reviewer.auth).send({ decision: 'approved' }).expect(200);
 
     // demote the first approver to Viewer
@@ -319,10 +332,12 @@ describe('publishing without approval (org setting approval_required=false, the 
     const t = await createTenant(ctx, 'noapproval');
     expect((await ctx.prisma.organizationSettings.findUniqueOrThrow({ where: { organizationId: t.organizationId } })).approvalRequired).toBe(false);
     const { sopId, versionId } = await createSop(t);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'EDITOR')).send({}).expect(400); // no steps
+    // Editors can edit but cannot publish, even when approval is off (sop.publish is required; see sop-finish-authz.e2e-spec).
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'EDITOR')).send({}).expect(403);
     await saveSteps(t, sopId, versionId, [{ description: 'Do it' }]);
     await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'OPERATOR')).send({}).expect(403);
-    const r = await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'EDITOR')).send({ changeSummary: 'v1' }).expect(200);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'EDITOR')).send({ changeSummary: 'v1' }).expect(403);
+    const r = await ctx.http().post(`/api/sops/${sopId}/versions/${versionId}/finish`).set(as(t, 'APPROVER')).send({ changeSummary: 'v1' }).expect(200);
     expect(r.body.lifecycleState).toBe('PUBLISHED');
     const sop = await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } });
     expect(sop).toMatchObject({ status: 'published', currentPublishedVersionId: versionId });
@@ -331,7 +346,8 @@ describe('publishing without approval (org setting approval_required=false, the 
     expect((await saveSteps(t, sopId, versionId, [{ description: 'tamper' }])).status).toBe(409);
     const v2 = await ctx.http().post(`/api/sops/${sopId}/versions`).set(as(t, 'EDITOR')).expect(201);
     await saveSteps(t, sopId, v2.body.id, [{ description: 'Do it better' }]);
-    await ctx.http().post(`/api/sops/${sopId}/versions/${v2.body.id}/finish`).set(as(t, 'EDITOR')).send({}).expect(200);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${v2.body.id}/finish`).set(as(t, 'EDITOR')).send({}).expect(403);
+    await ctx.http().post(`/api/sops/${sopId}/versions/${v2.body.id}/finish`).set(as(t, 'APPROVER')).send({}).expect(200);
     expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).currentPublishedVersionId).toBe(v2.body.id);
   });
 
@@ -700,11 +716,11 @@ describe('bulk edit (folder move / archive)', () => {
 
   it('bulk archives and unarchives, recomputing status', async () => {
     const { sopId } = await publishedSop(a, 'Bulk archive test');
-    const r = await ctx.http().patch('/api/sops/bulk').set(as(a, 'EDITOR')).send({ ids: [sopId], patch: { archived: true } }).expect(200);
+    const r = await ctx.http().patch('/api/sops/bulk').set(as(a, 'APPROVER')).send({ ids: [sopId], patch: { archived: true } }).expect(200);
     expect(r.body.updated).toBe(1);
     expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).status).toBe('archived');
 
-    await ctx.http().patch('/api/sops/bulk').set(as(a, 'EDITOR')).send({ ids: [sopId], patch: { archived: false } }).expect(200);
+    await ctx.http().patch('/api/sops/bulk').set(as(a, 'APPROVER')).send({ ids: [sopId], patch: { archived: false } }).expect(200);
     expect((await ctx.prisma.sop.findUniqueOrThrow({ where: { id: sopId } })).status).toBe('published');
   });
 

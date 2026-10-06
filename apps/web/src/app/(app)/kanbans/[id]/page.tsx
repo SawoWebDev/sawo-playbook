@@ -2,41 +2,98 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChangeHistory } from '@/components/KanbanCardMenu';
 import type { Kanban } from '@/components/KanbanForm';
 import { Lightbox } from '@/components/Lightbox';
+import { KanbanRevisionBadge } from '@/components/StatusBadge';
 import { Item } from '@/components/SopCardMenu';
 import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtListDate } from '@/lib/format';
-import { kanbanDescription, kanbanTitle } from '@/lib/kanban';
-import { allowed } from '@/lib/permissions';
+import { blockedReasons, fetchKanbanInbox, isLockedForEdit, kanbanDescription, kanbanTitle } from '@/lib/kanban';
+import { hasPermission } from '@/lib/permissions';
+import type { KanbanRevisionActions, KanbanRevisionDetail, KanbanRevisionState } from '@/lib/types';
 
 const money = (n: number | null) => (n === null || n === undefined ? null : n.toFixed(2));
+
+const NO_ACTIONS: KanbanRevisionActions = { submit: false, preApprove: false, approve: false, reject: false, publish: false };
+
+/** The step the open revision is waiting on, by the API's state. Pre-approval and approval are separate stages. */
+function waitingOn(state: KanbanRevisionState): string {
+  switch (state) {
+    case 'DRAFT':
+      return 'Submission';
+    case 'PENDING_PRE_APPROVAL':
+      return 'Pre Approval';
+    case 'PRE_APPROVED':
+      return 'Approval';
+    case 'APPROVED':
+      return 'Publishing';
+    default:
+      return '—';
+  }
+}
 
 export default function KanbanDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
   const [k, setK] = useState<Kanban | null>(null);
+  const [blocked, setBlocked] = useState<string | null>(null);
+  const [revision, setRevision] = useState<KanbanRevisionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
   const [more, setMore] = useState(false);
   const [history, setHistory] = useState(false);
   const [zoom, setZoom] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    api<Kanban>(`/kanbans/${id}`)
-      .then(setK)
-      .catch((e) => setError(errorMessage(e)));
+  /**
+   * The card says whether a revision is open (openRevision). The revision says what this user may do with it. A viewer
+   * who cannot see the revision gets a 404, so the card then shows the review state with no actions.
+   */
+  const load = useCallback(async () => {
+    try {
+      const [card, inbox] = await Promise.all([api<Kanban>(`/kanbans/${id}`), fetchKanbanInbox().catch(() => null)]);
+      setK(card);
+      setBlocked(blockedReasons(inbox).get(id) ?? null);
+      setRevision(card.openRevision ? await api<KanbanRevisionDetail>(`/kanbans/revisions/${card.openRevision.id}`).catch(() => null) : null);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
   }, [id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function act(fn: () => Promise<unknown>, ok: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await fn();
+      setNotice(ok);
+      setRejectComment('');
+      await load();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (error && !k) return <div className="error">{error}</div>;
   if (!k) return <p className="muted">Loading…</p>;
 
-  const canEdit = allowed(user?.role, 'editKanbans');
+  const canEdit = hasPermission(user, 'kanban.edit');
+  const rev = k.openRevision ?? null;
+  const revId = rev?.id;
+  const editLocked = !!rev && isLockedForEdit(rev.state);
+  const actions = revision?.actions ?? NO_ACTIONS;
   const title = kanbanTitle(k);
 
   async function printPdf(share = false) {
@@ -106,11 +163,16 @@ export default function KanbanDetailPage() {
         <strong className="bar-title">{title}</strong>
       </SubbarLeft>
       <SubbarRight>
-        {canEdit && (
-          <Link className="btn btn-blue" href={`/kanbans/${id}/edit`}>
-            {Icons.pencil} Edit
-          </Link>
-        )}
+        {canEdit &&
+          (editLocked ? (
+            <button className="btn btn-blue" disabled title="This card has a revision in review. Its draft can be edited again once the review is resolved.">
+              {Icons.pencil} Edit
+            </button>
+          ) : (
+            <Link className="btn btn-blue" href={`/kanbans/${id}/edit`}>
+              {Icons.pencil} Edit
+            </Link>
+          ))}
         <div className="menu">
           <button className="kebab" aria-label="More options" aria-expanded={more} onClick={() => setMore((o) => !o)}>
             ⋮
@@ -167,6 +229,98 @@ export default function KanbanDetailPage() {
         </aside>
         <div>
           {error && <div className="error">{error}</div>}
+          {notice && <div className="success">{notice}</div>}
+          <div className="info-card">
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div className="info-label">Approval status</div>
+              <div className="info-value">
+                {rev ? (
+                  <KanbanRevisionBadge state={rev.state} rejected={rev.state === 'DRAFT' && !!rev.comment} blocked={!!blocked} />
+                ) : (
+                  <span className="badge badge-green">Published</span>
+                )}
+              </div>
+            </div>
+            {rev && (
+              <>
+                <div>
+                  <div className="info-label">Submitted By</div>
+                  <div className="info-value">{rev.submitter?.name ?? '—'}</div>
+                </div>
+                <div>
+                  <div className="info-label">Submitted</div>
+                  <div className="info-value">{revision?.submittedAt ? fmtListDate(revision.submittedAt) : '—'}</div>
+                </div>
+                <div>
+                  <div className="info-label">Routed To</div>
+                  <div className="info-value">
+                    {revision?.routingGroups.length === 0
+                      ? 'Organisation-wide'
+                      : revision?.routingGroups.map((g) => g.name ?? '—').join(', ') || '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="info-label">Waiting On</div>
+                  <div className="info-value">{waitingOn(rev.state)}</div>
+                </div>
+                {blocked && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div className="info-label">Blocked</div>
+                    <div className="info-value">{blocked}</div>
+                  </div>
+                )}
+                {rev.state === 'DRAFT' && rev.comment && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div className="info-label">Rejected — reason</div>
+                    <div className="info-value" style={{ color: '#b42318' }}>
+                      {rev.comment}
+                    </div>
+                  </div>
+                )}
+                {rev.state === 'PENDING_PRE_APPROVAL' && actions.approve && (
+                  <div style={{ gridColumn: '1 / -1' }} className="muted">
+                    You can approve now. Approving skips Pre Approval and counts as the final approval.
+                  </div>
+                )}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  {actions.submit && (
+                    <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`/kanbans/revisions/${revId}/submit`, { method: 'POST', body: {} }), 'Submitted for review.')}>
+                      Submit for review
+                    </button>
+                  )}
+                  {actions.preApprove && (
+                    <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`/kanbans/revisions/${revId}/pre-approve`, { method: 'POST' }), 'Pre-approved.')}>
+                      Pre-approve
+                    </button>
+                  )}
+                  {actions.approve && (
+                    <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`/kanbans/revisions/${revId}/approve`, { method: 'POST' }), 'Approved.')}>
+                      Approve
+                    </button>
+                  )}
+                  {actions.publish && (
+                    <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`/kanbans/revisions/${revId}/publish`, { method: 'POST' }), 'Published. The card is now live.')}>
+                      Publish
+                    </button>
+                  )}
+                </div>
+                {actions.reject && (
+                  <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
+                    <textarea placeholder="Reason for rejection (required)" value={rejectComment} onChange={(e) => setRejectComment(e.target.value)} rows={2} />
+                    <div>
+                      <button
+                        className="btn btn-danger"
+                        disabled={busy || !rejectComment.trim()}
+                        onClick={() => act(() => api(`/kanbans/revisions/${revId}/reject`, { method: 'POST', body: { comment: rejectComment.trim() } }), 'Returned to the editor as a draft.')}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           <div className="info-card">
             <div>
               <div className="info-label">Part Number</div>

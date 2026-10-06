@@ -21,7 +21,7 @@ export class FoldersService {
       select: { id: true, name: true, parentId: true, createdAt: true },
     });
     const sopWhere: Prisma.SopWhereInput = { organizationId: actor.organizationId, deletedAt: null, folderId: { not: null }, archivedAt: null };
-    if (!canSeeUnpublished(actor.role)) sopWhere.currentPublishedVersionId = { not: null };
+    if (!canSeeUnpublished(actor)) sopWhere.currentPublishedVersionId = { not: null };
     const counts = await this.prisma.sop.groupBy({ by: ['folderId'], where: sopWhere, _count: { _all: true } });
     const countBy = new Map(counts.map((c) => [c.folderId, c._count._all]));
     return folders.map((f) => ({ ...f, sopCount: countBy.get(f.id) ?? 0 }));

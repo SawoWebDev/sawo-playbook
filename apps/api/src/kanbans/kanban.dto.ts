@@ -88,3 +88,11 @@ export class BulkEditDto {
 export class BulkIdsDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[];
 }
+
+export class RejectRevisionDto {
+  @IsString() @MinLength(1) @MaxLength(2000) comment!: string;
+}
+
+export class SubmitRevisionDto {
+  @IsOptional() @IsString() @MaxLength(2000) comment?: string;
+}

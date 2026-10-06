@@ -26,6 +26,8 @@ export function sopHelpers(ctx: () => TestContext) {
   async function publishFlow(t: Tenant, sopId: string, versionId: string) {
     const http = ctx().http;
     await http().post(`/api/sops/${sopId}/versions/${versionId}/submit`).set(as(t, 'EDITOR')).send({}).expect(200);
+    // Submission enters pre-approval first; the tenant's Pre Approver (in the submitter's General group) moves it on.
+    await http().post(`/api/sops/${sopId}/versions/${versionId}/pre-approve`).set(as(t, 'PRE_APPROVER')).send({}).expect(200);
     for (const auth of [t.reviewer.auth, as(t, 'ADMIN'), as(t, 'OWNER')]) {
       await http().post(`/api/sops/${sopId}/versions/${versionId}/decisions`).set(auth).send({ decision: 'approved' }).expect(200);
     }

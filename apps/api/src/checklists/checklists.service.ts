@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { ChecklistResult, OrgRole, Prisma } from '@prisma/client';
+import { ChecklistResult, Prisma } from '@prisma/client';
+import { Permission } from '../common/permissions';
 import { AuthUser } from '../common/auth-user';
 import { MediaService, UploadedFileLike } from '../media/media.service';
 import { markReferenced, reevaluateMedia } from '../media/media-lifecycle';
@@ -8,7 +9,7 @@ import { versionLabel } from '../sops/sop-status';
 import { DEFAULT_CONFIG, SopsService, VersionConfig } from '../sops/sops.service';
 
 /** Supervisory roles see every submission in the org; everyone else only their own. */
-const SUPERVISORS: OrgRole[] = ['OWNER', 'ADMIN', 'EDITOR', 'TRAINER'];
+
 
 export interface ResponseInput {
   result?: ChecklistResult | null;
@@ -45,7 +46,7 @@ export class ChecklistsService {
 
   async list(actor: AuthUser, q: { sopId?: string; status?: string }) {
     const where: Prisma.ChecklistSubmissionWhereInput = { organizationId: actor.organizationId };
-    if (!SUPERVISORS.includes(actor.role)) where.operatorId = actor.id;
+    if (!actor.permissions.has(Permission.ChecklistViewAll)) where.operatorId = actor.id;
     if (q.status && ['in_progress', 'completed', 'abandoned'].includes(q.status)) where.status = q.status as Prisma.EnumChecklistStatusFilter['equals'];
     if (q.sopId) where.sopVersion = { sopId: q.sopId };
     const rows = await this.prisma.checklistSubmission.findMany({
@@ -79,7 +80,7 @@ export class ChecklistsService {
 
   private async find(actor: AuthUser, id: string) {
     const sub = await this.prisma.checklistSubmission.findFirst({ where: { id, organizationId: actor.organizationId } });
-    if (!sub || (!SUPERVISORS.includes(actor.role) && sub.operatorId !== actor.id)) throw new NotFoundException('Checklist not found');
+    if (!sub || (!actor.permissions.has(Permission.ChecklistViewAll) && sub.operatorId !== actor.id)) throw new NotFoundException('Checklist not found');
     return sub;
   }
 

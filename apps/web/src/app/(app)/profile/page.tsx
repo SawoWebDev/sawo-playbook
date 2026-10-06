@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { adoptSession, api, refreshSession, type SessionResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage } from '@/lib/format';
-import { ROLE_LABELS } from '@/lib/permissions';
+import { roleLabel } from '@/lib/permissions';
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -61,7 +61,7 @@ export default function ProfilePage() {
     <>
       <h1>My profile</h1>
       <p className="muted">
-        {user?.email} · {user && ROLE_LABELS[user.role]}
+        {user?.email} · {user && roleLabel(user.role)}
       </p>
       {msg && <div className={msg.ok ? 'success' : 'error'}>{msg.text}</div>}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>

@@ -73,7 +73,7 @@ export class AuthService {
             email,
             name: dto.name.trim(),
             passwordHash,
-            orgRole: OrgRole.OWNER,
+            orgRole: OrgRole.ADMIN,
             status: 'active',
           },
         });

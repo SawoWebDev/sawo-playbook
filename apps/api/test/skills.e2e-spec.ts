@@ -24,17 +24,17 @@ beforeAll(async () => {
   ({ sopId, versionId: v1 } = await h.publishedSop(a, { name: 'Weld bracket' }));
   trainee = a.users.OPERATOR;
   other = await a.addUser('OPERATOR', 'other-op');
-  await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.TRAINER.user.id, associateId: trainee.user.id }).expect(201);
+  await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.EDITOR.user.id, associateId: trainee.user.id }).expect(201);
 });
 afterAll(() => ctx.close());
 
 const assess = (auth: { Authorization: string }, body: object) => ctx.http().post('/api/skills/assessments').set(auth).send(body);
 
 describe('trainer assignment', () => {
-  it('only Owner/Admin assign; the trainer must have the Trainer role', async () => {
-    await ctx.http().post('/api/skills/trainers').set(as(a, 'EDITOR')).send({ trainerId: a.users.TRAINER.user.id, associateId: other.user.id }).expect(403);
-    await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.EDITOR.user.id, associateId: other.user.id }).expect(400);
-    await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.TRAINER.user.id, associateId: trainee.user.id }).expect(409);
+  it('only Owner/Admin assign; the trainer must hold skills.update (not a role name)', async () => {
+    await ctx.http().post('/api/skills/trainers').set(as(a, 'EDITOR')).send({ trainerId: a.users.EDITOR.user.id, associateId: other.user.id }).expect(403);
+    await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.OPERATOR.user.id, associateId: other.user.id }).expect(400);
+    await ctx.http().post('/api/skills/trainers').set(as(a, 'ADMIN')).send({ trainerId: a.users.EDITOR.user.id, associateId: trainee.user.id }).expect(409); // already assigned in beforeAll
     const list = await ctx.http().get('/api/skills/trainers').set(as(a, 'ADMIN')).expect(200);
     expect(list.body.map((x: { associate: { id: string } }) => x.associate.id)).toEqual([trainee.user.id]);
   });
@@ -54,9 +54,9 @@ describe('assessments', () => {
     await assess(as(a, 'ADMIN'), { associateId: a.users.ADMIN.user.id, sopId, level: 1 }).expect(403);
   });
 
-  it('Viewers and the retired Approver/Trainer roles cannot assess; levels outside 0–4 are rejected', async () => {
+  it('Viewers, Pre Approvers and the retired Trainer role cannot assess; levels outside 0–4 are rejected', async () => {
     await assess(as(a, 'OPERATOR'), { associateId: other.user.id, sopId, level: 1 }).expect(403);
-    await assess(as(a, 'APPROVER'), { associateId: other.user.id, sopId, level: 1 }).expect(403);
+    await assess(as(a, 'PRE_APPROVER'), { associateId: trainee.user.id, sopId, level: 1 }).expect(403);
     await assess(as(a, 'TRAINER'), { associateId: trainee.user.id, sopId, level: 1 }).expect(403);
     await assess(as(a, 'ADMIN'), { associateId: other.user.id, sopId, level: 5 }).expect(400);
   });

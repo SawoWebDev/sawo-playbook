@@ -39,6 +39,26 @@ enum OrgRole {
   APPROVER
   TRAINER
   OPERATOR
+  PRE_APPROVER
+}
+
+/// Which review stage a decision belongs to (SOP versions and kanban revisions).
+enum ApprovalStage {
+  pre
+  final
+
+  @@map("approval_stage")
+}
+
+enum KanbanRevisionState {
+  DRAFT
+  PENDING_PRE_APPROVAL
+  PRE_APPROVED
+  APPROVED
+  PUBLISHED
+  DISCARDED
+
+  @@map("kanban_revision_state")
 }
 
 enum SopType {
@@ -58,6 +78,7 @@ enum SopStatus {
 
 enum VersionLifecycleState {
   DRAFT
+  PENDING_PRE_APPROVAL
   PENDING_APPROVAL
   APPROVED
   PUBLISHED
@@ -100,7 +121,7 @@ enum ChecklistStatus {
 enum ChecklistResult {
   ok
   not_ok
-  n_a   @map("n/a")
+  n_a    @map("n/a")
 }
 
 enum InvitationStatus {
@@ -121,16 +142,18 @@ model Organization {
   createdAt            DateTime           @default(now()) @map("created_at")
   updatedAt            DateTime           @updatedAt @map("updated_at")
 
-  settings       OrganizationSettings?
-  users          User[]
-  folders        Folder[]
-  sops           Sop[]
-  sopVersions    SopVersion[]
-  mediaAssets    MediaAsset[]
-  kanbans        Kanban[]
-  activityEvents ActivityEvent[]
-  auditLogs      AuditLog[]
-  invitations    Invitation[]
+  settings        OrganizationSettings?
+  users           User[]
+  folders         Folder[]
+  sops            Sop[]
+  sopVersions     SopVersion[]
+  mediaAssets     MediaAsset[]
+  kanbans         Kanban[]
+  activityEvents  ActivityEvent[]
+  auditLogs       AuditLog[]
+  invitations     Invitation[]
+  userGroups      UserGroup[]
+  kanbanRevisions KanbanRevision[]
 
   @@map("organization")
 }
@@ -143,6 +166,8 @@ model OrganizationSettings {
   approvalQuorum    Int          @default(3) @map("approval_quorum")
   allowSelfApproval Boolean      @default(false) @map("allow_self_approval")
   publicSopViewing  Boolean      @default(false) @map("public_sop_viewing")
+  /// Admin-configured permissions per role: { "EDITOR": ["kanban.view", ...] }. Missing roles use the defaults in common/permissions.ts.
+  rolePermissions   Json?        @map("role_permissions")
   updatedAt         DateTime     @default(now()) @updatedAt @map("updated_at")
   organization      Organization @relation(fields: [organizationId], references: [id])
 
@@ -152,40 +177,79 @@ model OrganizationSettings {
 // ─────────────────────── Users (§7.1) ───────────────────────
 
 model User {
-  id             String     @id @default(uuid()) @db.Uuid
-  organizationId String     @map("organization_id") @db.Uuid
-  email          String     @unique // multi-org membership deferred (§18)
-  name           String
-  status         UserStatus @default(invited)
-  passwordHash   String?    @map("password_hash")
-  ssoProviderId  String?    @map("sso_provider_id")
-  orgRole        OrgRole    @map("org_role")
-  siteScope      String[]   @default([]) @map("site_scope") // NOT enforced in MVP (§6.10)
-  folderScope    String[]   @default([]) @map("folder_scope") // NOT enforced in MVP (§6.10)
-  mfaEnabled     Boolean    @default(false) @map("mfa_enabled")
+  id                  String     @id @default(uuid()) @db.Uuid
+  organizationId      String     @map("organization_id") @db.Uuid
+  email               String     @unique // multi-org membership deferred (§18)
+  name                String
+  status              UserStatus @default(invited)
+  passwordHash        String?    @map("password_hash")
+  ssoProviderId       String?    @map("sso_provider_id")
+  orgRole             OrgRole    @map("org_role")
+  siteScope           String[]   @default([]) @map("site_scope") // NOT enforced in MVP (§6.10)
+  folderScope         String[]   @default([]) @map("folder_scope") // NOT enforced in MVP (§6.10)
+  mfaEnabled          Boolean    @default(false) @map("mfa_enabled")
   /// AES-256-GCM encrypted TOTP secrets (key: MFA_ENCRYPTION_KEY)
-  mfaSecretEnc        String? @map("mfa_secret_enc")
-  mfaPendingSecretEnc String? @map("mfa_pending_secret_enc")
+  mfaSecretEnc        String?    @map("mfa_secret_enc")
+  mfaPendingSecretEnc String?    @map("mfa_pending_secret_enc")
   /// Last accepted TOTP time-step — prevents code replay
-  mfaLastStep         Int?    @map("mfa_last_step")
+  mfaLastStep         Int?       @map("mfa_last_step")
   // Bumped on password reset / role change / removal; embedded in access JWTs
   // so outstanding access tokens are rejected immediately (§7.3 rule 7).
-  tokenVersion   Int        @default(0) @map("token_version")
-  failedLogins   Int        @default(0) @map("failed_logins")
-  lockedUntil    DateTime?  @map("locked_until")
-  lastLoginAt    DateTime?  @map("last_login_at")
-  createdById    String?    @map("created_by") @db.Uuid
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+  tokenVersion        Int        @default(0) @map("token_version")
+  failedLogins        Int        @default(0) @map("failed_logins")
+  lockedUntil         DateTime?  @map("locked_until")
+  lastLoginAt         DateTime?  @map("last_login_at")
+  createdById         String?    @map("created_by") @db.Uuid
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
 
-  organization  Organization   @relation(fields: [organizationId], references: [id])
-  createdBy     User?          @relation("UserCreatedBy", fields: [createdById], references: [id])
-  created       User[]         @relation("UserCreatedBy")
-  refreshTokens RefreshToken[]
-  passwordResets PasswordResetToken[]
+  organization     Organization         @relation(fields: [organizationId], references: [id])
+  createdBy        User?                @relation("UserCreatedBy", fields: [createdById], references: [id])
+  created          User[]               @relation("UserCreatedBy")
+  refreshTokens    RefreshToken[]
+  passwordResets   PasswordResetToken[]
+  groupMemberships GroupMember[]
 
+  /// Target for the composite foreign keys from group membership (see GroupMember).
+  @@unique([id, organizationId], map: "app_user_id_organization_id_key")
   @@index([organizationId])
   @@map("app_user")
+}
+
+// ─────────────────────── Groups (approval routing) ───────────────────────
+
+/// Organisational groups (Marketing, Safety, …). Used only to scope approval routing;
+/// content (SOPs, kanbans) does not belong to a group.
+model UserGroup {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  members      GroupMember[]
+
+  @@unique([organizationId, name])
+  /// Target for GroupMember's composite foreign key: a membership must reference a group of its own organisation.
+  @@unique([id, organizationId], map: "user_group_id_organization_id_key")
+  @@map("user_group")
+}
+
+model GroupMember {
+  groupId        String   @map("group_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  /// Composite foreign keys (group and user must belong to the membership's organisation). Named as in migration 20261006000100.
+  group UserGroup @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade, map: "user_group_member_group_same_org_fkey")
+  user  User      @relation(fields: [userId, organizationId], references: [id, organizationId], map: "user_group_member_user_same_org_fkey")
+
+  @@id([groupId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("user_group_member")
 }
 
 // §7.4 — refresh tokens stored as hashes, grouped in rotation families.
@@ -228,6 +292,8 @@ model Invitation {
   organizationId String           @map("organization_id") @db.Uuid
   email          String
   orgRole        OrgRole          @map("org_role")
+  /// Groups the invitee joins on acceptance (validated when invited; re-checked on accept).
+  groupIds       String[]         @default([]) @map("group_ids") @db.Uuid
   tokenHash      String           @unique @map("token_hash")
   status         InvitationStatus @default(pending)
   invitedById    String           @map("invited_by") @db.Uuid
@@ -266,31 +332,31 @@ model Folder {
 // ─────────────────────── SOP (§6.2) ───────────────────────
 
 model Sop {
-  id                        String    @id @default(uuid()) @db.Uuid
-  organizationId            String    @map("organization_id") @db.Uuid
-  referenceNo               String    @map("reference_no")
+  id                        String                   @id @default(uuid()) @db.Uuid
+  organizationId            String                   @map("organization_id") @db.Uuid
+  referenceNo               String                   @map("reference_no")
   name                      String
-  type                      SopType   @default(standard)
-  folderId                  String?   @map("folder_id") @db.Uuid
-  qrPublicToken             String    @unique @map("qr_public_token")
-  currentPublishedVersionId String?   @unique @map("current_published_version_id") @db.Uuid
-  latestDraftVersionId      String?   @unique @map("latest_draft_version_id") @db.Uuid
-  status                    SopStatus @default(draft) // DERIVED (Invariant #18)
-  archivedAt                DateTime? @map("archived_at")
-  createdById               String    @map("created_by") @db.Uuid
-  createdAt                 DateTime  @default(now()) @map("created_at")
-  updatedAt                 DateTime  @updatedAt @map("updated_at")
-  deletedAt                 DateTime? @map("deleted_at")
-  deletedById               String?   @map("deleted_by") @db.Uuid
+  type                      SopType                  @default(standard)
+  folderId                  String?                  @map("folder_id") @db.Uuid
+  qrPublicToken             String                   @unique @map("qr_public_token")
+  currentPublishedVersionId String?                  @unique @map("current_published_version_id") @db.Uuid
+  latestDraftVersionId      String?                  @unique @map("latest_draft_version_id") @db.Uuid
+  status                    SopStatus                @default(draft) // DERIVED (Invariant #18)
+  archivedAt                DateTime?                @map("archived_at")
+  createdById               String                   @map("created_by") @db.Uuid
+  createdAt                 DateTime                 @default(now()) @map("created_at")
+  updatedAt                 DateTime                 @updatedAt @map("updated_at")
+  deletedAt                 DateTime?                @map("deleted_at")
+  deletedById               String?                  @map("deleted_by") @db.Uuid
   /// FTS (§14): name + reference_no + folder name; maintained by trigger
   searchTsv                 Unsupported("tsvector")? @map("search_tsv")
 
-  organization            Organization @relation(fields: [organizationId], references: [id])
-  folder                  Folder?      @relation(fields: [folderId], references: [id])
-  versions                SopVersion[] @relation("SopVersions")
-  currentPublishedVersion SopVersion?  @relation("SopCurrentPublished", fields: [currentPublishedVersionId], references: [id])
-  latestDraftVersion      SopVersion?  @relation("SopLatestDraft", fields: [latestDraftVersionId], references: [id])
-  linkedFromSteps         SopStep[]    @relation("StepLinkedSop")
+  organization            Organization      @relation(fields: [organizationId], references: [id])
+  folder                  Folder?           @relation(fields: [folderId], references: [id])
+  versions                SopVersion[]      @relation("SopVersions")
+  currentPublishedVersion SopVersion?       @relation("SopCurrentPublished", fields: [currentPublishedVersionId], references: [id])
+  latestDraftVersion      SopVersion?       @relation("SopLatestDraft", fields: [latestDraftVersionId], references: [id])
+  linkedFromSteps         SopStep[]         @relation("StepLinkedSop")
   kanbansOrdering         Kanban[]
   skillAssessments        SkillAssessment[]
   skillRecords            SkillRecord[]
@@ -302,36 +368,38 @@ model Sop {
 
 // §6.3 — immutable once PUBLISHED
 model SopVersion {
-  id                    String                @id @default(uuid()) @db.Uuid
-  organizationId        String                @map("organization_id") @db.Uuid
-  sopId                 String                @map("sop_id") @db.Uuid
-  versionSequence       Int                   @map("version_sequence")
-  config                Json                  @default("{\"cover_sheet\":false,\"collaborate\":false,\"checklist_sop\":false,\"key_points_enabled\":false}")
-  lifecycleState        VersionLifecycleState @default(DRAFT) @map("lifecycle_state")
-  currentApprovalRound  Int                   @default(1) @map("current_approval_round")
-  changeSummary         String?               @map("change_summary")
-  createdById           String                @map("created_by") @db.Uuid
-  createdAt             DateTime              @default(now()) @map("created_at")
-  submittedById         String?               @map("submitted_by") @db.Uuid
-  submittedAt           DateTime?             @map("submitted_at")
-  approvedAt            DateTime?             @map("approved_at")
-  publishedById         String?               @map("published_by") @db.Uuid
-  publishedAt           DateTime?             @map("published_at")
-  pdfAssetId            String?               @map("pdf_asset_id") @db.Uuid
+  id                   String                   @id @default(uuid()) @db.Uuid
+  organizationId       String                   @map("organization_id") @db.Uuid
+  sopId                String                   @map("sop_id") @db.Uuid
+  versionSequence      Int                      @map("version_sequence")
+  config               Json                     @default("{\"cover_sheet\":false,\"collaborate\":false,\"checklist_sop\":false,\"key_points_enabled\":false}")
+  lifecycleState       VersionLifecycleState    @default(DRAFT) @map("lifecycle_state")
+  currentApprovalRound Int                      @default(1) @map("current_approval_round")
+  changeSummary        String?                  @map("change_summary")
+  createdById          String                   @map("created_by") @db.Uuid
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  submittedById        String?                  @map("submitted_by") @db.Uuid
+  submittedAt          DateTime?                @map("submitted_at")
+  approvedAt           DateTime?                @map("approved_at")
+  publishedById        String?                  @map("published_by") @db.Uuid
+  publishedAt          DateTime?                @map("published_at")
+  pdfAssetId           String?                  @map("pdf_asset_id") @db.Uuid
+  /// Groups of the submitter at submission time; scope of who may pre-approve / approve (empty = organisation-wide).
+  routingGroupIds      String[]                 @default([]) @map("routing_group_ids") @db.Uuid
   /// FTS (§14): step titles + descriptions; maintained by trigger on sop_step
-  contentTsv            Unsupported("tsvector")? @map("content_tsv")
+  contentTsv           Unsupported("tsvector")? @map("content_tsv")
 
-  organization          Organization          @relation(fields: [organizationId], references: [id])
-  sop                   Sop                   @relation("SopVersions", fields: [sopId], references: [id])
-  currentPublishedOf    Sop?                  @relation("SopCurrentPublished")
-  latestDraftOf         Sop?                  @relation("SopLatestDraft")
-  pdfAsset              MediaAsset?           @relation("VersionPdf", fields: [pdfAssetId], references: [id])
-  steps                 SopStep[]             @relation("VersionSteps")
-  approvals             SopVersionApproval[]
-  linkedFromSteps       SopStep[]             @relation("StepLinkedSopVersion")
-  checklistSubmissions  ChecklistSubmission[]
-  skillAssessments      SkillAssessment[]
-  skillRecords          SkillRecord[]
+  organization         Organization          @relation(fields: [organizationId], references: [id])
+  sop                  Sop                   @relation("SopVersions", fields: [sopId], references: [id])
+  currentPublishedOf   Sop?                  @relation("SopCurrentPublished")
+  latestDraftOf        Sop?                  @relation("SopLatestDraft")
+  pdfAsset             MediaAsset?           @relation("VersionPdf", fields: [pdfAssetId], references: [id])
+  steps                SopStep[]             @relation("VersionSteps")
+  approvals            SopVersionApproval[]
+  linkedFromSteps      SopStep[]             @relation("StepLinkedSopVersion")
+  checklistSubmissions ChecklistSubmission[]
+  skillAssessments     SkillAssessment[]
+  skillRecords         SkillRecord[]
 
   @@unique([sopId, versionSequence])
   @@index([organizationId])
@@ -346,31 +414,32 @@ model SopVersionApproval {
   sopVersionId   String           @map("sop_version_id") @db.Uuid
   approvalRound  Int              @map("approval_round")
   approverId     String           @map("approver_id") @db.Uuid
+  stage          ApprovalStage    @default(final)
   decision       ApprovalDecision
   comment        String?
   createdAt      DateTime         @default(now()) @map("created_at")
 
   sopVersion SopVersion @relation(fields: [sopVersionId], references: [id])
 
-  @@unique([sopVersionId, approvalRound, approverId])
+  @@unique([sopVersionId, approvalRound, approverId, stage])
   @@index([organizationId])
   @@map("sop_version_approval")
 }
 
 // §6.5
 model SopStep {
-  id                   String   @id @default(uuid()) @db.Uuid
-  organizationId       String   @map("organization_id") @db.Uuid
-  sopVersionId         String   @map("sop_version_id") @db.Uuid
-  order                Int
-  title                String?
-  description          String   @default("")
-  isTextOnly           Boolean  @default(false) @map("is_text_only")
-  isCritical           Boolean  @default(false) @map("is_critical")
-  usesOkNotokMedia     Boolean  @default(false) @map("uses_ok_notok_media")
-  linkedSopId          String?  @map("linked_sop_id") @db.Uuid
-  linkedSopVersionId   String?  @map("linked_sop_version_id") @db.Uuid
-  plannedTimeSeconds   Int      @default(0) @map("planned_time_seconds")
+  id                 String  @id @default(uuid()) @db.Uuid
+  organizationId     String  @map("organization_id") @db.Uuid
+  sopVersionId       String  @map("sop_version_id") @db.Uuid
+  order              Int
+  title              String?
+  description        String  @default("")
+  isTextOnly         Boolean @default(false) @map("is_text_only")
+  isCritical         Boolean @default(false) @map("is_critical")
+  usesOkNotokMedia   Boolean @default(false) @map("uses_ok_notok_media")
+  linkedSopId        String? @map("linked_sop_id") @db.Uuid
+  linkedSopVersionId String? @map("linked_sop_version_id") @db.Uuid
+  plannedTimeSeconds Int     @default(0) @map("planned_time_seconds")
 
   sopVersion         SopVersion          @relation("VersionSteps", fields: [sopVersionId], references: [id])
   linkedSop          Sop?                @relation("StepLinkedSop", fields: [linkedSopId], references: [id])
@@ -430,41 +499,42 @@ model SopStepMedia {
 // ─────────────────────── Kanbans (§6.7) ───────────────────────
 
 model Kanban {
-  id              String             @id @default(uuid()) @db.Uuid
-  organizationId  String             @map("organization_id") @db.Uuid
-  partCode        String             @map("part_code")
-  partDescription String?            @map("part_description")
-  pictureAssetId  String?            @map("picture_asset_id") @db.Uuid
+  id              String                   @id @default(uuid()) @db.Uuid
+  organizationId  String                   @map("organization_id") @db.Uuid
+  partCode        String                   @map("part_code")
+  partDescription String?                  @map("part_description")
+  pictureAssetId  String?                  @map("picture_asset_id") @db.Uuid
   supplier        String?
-  supplierPartNo  String?            @map("supplier_part_no")
-  usedFor         String?            @map("used_for")
-  orderWhen       String?            @map("order_when")
-  orderQty        String?            @map("order_qty")
-  deliveryTime    String?            @map("delivery_time")
+  supplierPartNo  String?                  @map("supplier_part_no")
+  usedFor         String?                  @map("used_for")
+  orderWhen       String?                  @map("order_when")
+  orderQty        String?                  @map("order_qty")
+  deliveryTime    String?                  @map("delivery_time")
   location        String?
-  price           Decimal?           @db.Decimal(12, 2)
-  carriage        Decimal?           @db.Decimal(12, 2)
-  customField1    String?            @map("custom_field_1")
-  customField2    String?            @map("custom_field_2")
-  orderingType    KanbanOrderingType @map("ordering_type")
-  orderingUrl     String?            @map("ordering_url")
-  orderingSopId   String?            @map("ordering_sop_id") @db.Uuid
-  orderingEmail   String?            @map("ordering_email")
+  price           Decimal?                 @db.Decimal(12, 2)
+  carriage        Decimal?                 @db.Decimal(12, 2)
+  customField1    String?                  @map("custom_field_1")
+  customField2    String?                  @map("custom_field_2")
+  orderingType    KanbanOrderingType       @map("ordering_type")
+  orderingUrl     String?                  @map("ordering_url")
+  orderingSopId   String?                  @map("ordering_sop_id") @db.Uuid
+  orderingEmail   String?                  @map("ordering_email")
   tag             String?
   color           String?
   barcode         String?
-  template        String             @default("01")
-  createdById     String             @map("created_by") @db.Uuid
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
-  deletedAt       DateTime?          @map("deleted_at")
+  template        String                   @default("01")
+  createdById     String                   @map("created_by") @db.Uuid
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  deletedAt       DateTime?                @map("deleted_at")
   /// FTS (§14): generated column (part code, description, supplier, supplier part no, used for, tag)
   searchTsv       Unsupported("tsvector")? @map("search_tsv")
 
-  organization Organization  @relation(fields: [organizationId], references: [id])
-  picture      MediaAsset?   @relation("KanbanPicture", fields: [pictureAssetId], references: [id])
-  orderingSop  Sop?          @relation(fields: [orderingSopId], references: [id])
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  picture      MediaAsset?      @relation("KanbanPicture", fields: [pictureAssetId], references: [id])
+  orderingSop  Sop?             @relation(fields: [orderingSopId], references: [id])
   media        KanbanMedia[]
+  revisions    KanbanRevision[]
 
   // CHECK constraint on ordering_* fields defined in migration SQL.
   @@index([organizationId])
@@ -508,8 +578,8 @@ model SkillAssessment {
   assessedAt     DateTime @default(now()) @map("assessed_at")
   notes          String?
 
-  sop           Sop           @relation(fields: [sopId], references: [id])
-  sopVersion    SopVersion    @relation(fields: [sopVersionId], references: [id])
+  sop           Sop          @relation(fields: [sopId], references: [id])
+  sopVersion    SopVersion   @relation(fields: [sopVersionId], references: [id])
   currentRecord SkillRecord?
 
   @@index([organizationId, associateId, sopId])
@@ -606,4 +676,39 @@ model AuditLog {
   @@index([organizationId, occurredAt])
   @@index([action])
   @@map("audit_log")
+}
+
+// ─────────────────────── Kanban revisions (approval workflow) ───────────────────────
+
+/// A proposed change to a kanban (or a new card). The live `kanban` row is untouched until PUBLISHED.
+/// At most one open revision per live kanban (partial unique index in the migration).
+model KanbanRevision {
+  id              String              @id @default(uuid()) @db.Uuid
+  organizationId  String              @map("organization_id") @db.Uuid
+  kanbanId        String?             @map("kanban_id") @db.Uuid
+  state           KanbanRevisionState @default(DRAFT)
+  /// Proposed card fields: partCode, partDescription, …, ordering*, pictureAssetId, mediaAssetIds.
+  payload         Json
+  routingGroupIds String[]            @default([]) @map("routing_group_ids") @db.Uuid
+  createdById     String              @map("created_by") @db.Uuid
+  updatedById     String              @map("updated_by") @db.Uuid
+  submittedById   String?             @map("submitted_by") @db.Uuid
+  submittedAt     DateTime?           @map("submitted_at")
+  preApprovedById String?             @map("pre_approved_by") @db.Uuid
+  preApprovedAt   DateTime?           @map("pre_approved_at")
+  approvedById    String?             @map("approved_by") @db.Uuid
+  approvedAt      DateTime?           @map("approved_at")
+  publishedById   String?             @map("published_by") @db.Uuid
+  publishedAt     DateTime?           @map("published_at")
+  /// Last rejection / discard comment; the reason shown to the editor when the revision returns to DRAFT.
+  lastComment     String?             @map("last_comment")
+  lastCommentById String?             @map("last_comment_by") @db.Uuid
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  kanban       Kanban?      @relation(fields: [kanbanId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, state])
+  @@map("kanban_revision")
 }

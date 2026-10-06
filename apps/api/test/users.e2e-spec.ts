@@ -51,9 +51,13 @@ describe('list users', () => {
 });
 
 describe('invitations', () => {
+  let gA: string[] = [];
+  beforeAll(async () => {
+    gA = [(await ctx.prisma.userGroup.findFirstOrThrow({ where: { organizationId: a.organizationId, name: 'General' } })).id];
+  });
   it('invite → describe → accept creates an active user with the invited role', async () => {
     const email = uniqueEmail();
-    const inv = await ctx.http().post('/api/users/invitations').set(a.users.ADMIN.auth).send({ email, role: 'EDITOR' }).expect(201);
+    const inv = await ctx.http().post('/api/users/invitations').set(a.users.ADMIN.auth).send({ email, role: 'EDITOR', groupIds: gA }).expect(201);
     expect(inv.body.inviteUrl).toMatch(/\/invite\//);
     const token = tokenFromMail(email, 'invite');
 
@@ -71,25 +75,25 @@ describe('invitations', () => {
 
   it('re-inviting the same email supersedes the previous invitation', async () => {
     const email = uniqueEmail();
-    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'OPERATOR' }).expect(201);
+    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'OPERATOR', groupIds: gA }).expect(201);
     const first = tokenFromMail(email, 'invite');
-    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'EDITOR' }).expect(201);
+    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'EDITOR', groupIds: gA }).expect(201);
     await ctx.http().get(`/api/auth/invitations/${first}`).expect(404);
     const second = tokenFromMail(email, 'invite');
     const d = await ctx.http().get(`/api/auth/invitations/${second}`).expect(200);
     expect(d.body.role).toBe('EDITOR');
   });
 
-  it.each(['APPROVER', 'TRAINER', 'OWNER'] as const)('the %s role cannot be given by invitation', async (role) => {
-    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: uniqueEmail(), role }).expect(role === 'OWNER' ? 403 : 400);
+  it.each(['TRAINER', 'OWNER'] as const)('the retired %s role cannot be given by invitation', async (role) => {
+    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: uniqueEmail(), role }).expect(400);
   });
 
   it('rejects inviting an existing user', async () => {
-    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: b.users.EDITOR.user.email, role: 'EDITOR' }).expect(409);
+    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: b.users.EDITOR.user.email, role: 'EDITOR', groupIds: gA }).expect(409);
   });
 
-  it('nobody can invite an OWNER; Admin cannot invite an ADMIN; Owner can', async () => {
-    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: uniqueEmail(), role: 'OWNER' }).expect(403);
+  it('Owner cannot be invited (400); Admin cannot invite an ADMIN; Owner can', async () => {
+    await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: uniqueEmail(), role: 'OWNER' }).expect(400);
     await ctx.http().post('/api/users/invitations').set(a.users.ADMIN.auth).send({ email: uniqueEmail(), role: 'ADMIN' }).expect(403);
     await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email: uniqueEmail(), role: 'ADMIN' }).expect(201);
   });
@@ -100,7 +104,7 @@ describe('invitations', () => {
 
   it('revoked invitations cannot be accepted; cross-tenant revoke is 404', async () => {
     const email = uniqueEmail();
-    const inv = await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'OPERATOR' }).expect(201);
+    const inv = await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'OPERATOR', groupIds: gA }).expect(201);
     const token = tokenFromMail(email, 'invite');
     await expectCrossTenantNotFound(() => ctx.http().delete(`/api/users/invitations/${inv.body.id}`).set(b.users.OWNER.auth));
     await ctx.http().delete(`/api/users/invitations/${inv.body.id}`).set(a.users.OWNER.auth).expect(204);
@@ -109,7 +113,7 @@ describe('invitations', () => {
 
   it('expired invitations cannot be accepted', async () => {
     const email = uniqueEmail();
-    const inv = await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'OPERATOR' }).expect(201);
+    const inv = await ctx.http().post('/api/users/invitations').set(a.users.OWNER.auth).send({ email, role: 'OPERATOR', groupIds: gA }).expect(201);
     await ctx.prisma.invitation.update({ where: { id: inv.body.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     const token = tokenFromMail(email, 'invite');
     await ctx.http().post('/api/auth/accept-invite').send({ token, name: 'X', password: TEST_PASSWORD }).expect(404);
@@ -118,7 +122,7 @@ describe('invitations', () => {
   it('bulk CSV invite reports per-row results', async () => {
     const e1 = uniqueEmail('bulk1');
     const e2 = uniqueEmail('bulk2');
-    const csv = `email,role\n${e1},editor\nnot-an-email,operator\n${e2},OWNER\n${e1},trainer\n`;
+    const csv = `email,role,groups\n${e1},editor,General\nnot-an-email,operator,General\n${e2},OWNER,General\n${e1},trainer,General\n`;
     const res = await ctx.http().post('/api/users/invitations/bulk').set(a.users.ADMIN.auth).send({ csv }).expect(201);
     expect(res.body.created.map((c: { email: string }) => c.email)).toEqual([e1]);
     expect(res.body.errors).toHaveLength(3);
@@ -252,10 +256,10 @@ describe('audit log viewer', () => {
 });
 
 describe('organization deletion (§7.7)', () => {
-  it('requires Owner, exact name and password; cancellable during cooldown', async () => {
+  it('requires organization.delete (Admin), exact name and password; cancellable during cooldown', async () => {
     const t = await createTenant(ctx, 'doomed');
     const org = await ctx.prisma.organization.findUniqueOrThrow({ where: { id: t.organizationId } });
-    await ctx.http().post('/api/organization/deletion').set(t.users.ADMIN.auth).send({ confirmName: org.name, password: TEST_PASSWORD }).expect(403);
+    await ctx.http().post('/api/organization/deletion').set(t.users.EDITOR.auth).send({ confirmName: org.name, password: TEST_PASSWORD }).expect(403);
     await ctx.http().post('/api/organization/deletion').set(t.users.OWNER.auth).send({ confirmName: 'wrong', password: TEST_PASSWORD }).expect(400);
     await ctx.http().post('/api/organization/deletion').set(t.users.OWNER.auth).send({ confirmName: org.name, password: 'nope' }).expect(401);
     const res = await ctx.http().post('/api/organization/deletion').set(t.users.OWNER.auth).send({ confirmName: org.name, password: TEST_PASSWORD }).expect(201);

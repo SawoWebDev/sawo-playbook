@@ -5,31 +5,34 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { allowed, ROLE_LABELS, type Capability } from '@/lib/permissions';
+import { hasPermission, roleLabel } from '@/lib/permissions';
 
 interface NavItem {
   href: string;
   label: string;
-  cap?: Capability;
+  cap?: string;
 }
 
 const MODULES: NavItem[] = [
-  { href: '/checklists', label: 'Checklists', cap: 'viewSops' },
-  { href: '/folders', label: 'Folders', cap: 'viewSops' },
-  { href: '/analytics', label: 'Analytics', cap: 'viewAnalytics' },
+  { href: '/checklists', label: 'Checklists', cap: 'sop.view' },
+  { href: '/folders', label: 'Folders', cap: 'sop.view' },
+  { href: '/analytics', label: 'Analytics', cap: 'analytics.view' },
 ];
 
 const TABS: NavItem[] = [
-  { href: '/sops', label: 'STD OPS', cap: 'viewSops' },
-  { href: '/kanbans', label: 'KANBANS', cap: 'viewSops' },
-  { href: '/skills', label: 'SKILLS', cap: 'viewSkills' },
+  { href: '/sops', label: 'STD OPS', cap: 'sop.view' },
+  { href: '/kanbans', label: 'KANBANS', cap: 'sop.view' },
+  { href: '/skills', label: 'SKILLS', cap: 'skills.view' },
+  { href: '/approvals', label: 'APPROVALS', cap: 'sop.view' },
 ];
 
 const ADMIN: NavItem[] = [
-  { href: '/users', label: 'Manage Users', cap: 'manageUsers' },
-  { href: '/settings', label: 'Organization', cap: 'manageSettings' },
-  { href: '/backups', label: 'Backups', cap: 'manageSettings' },
-  { href: '/audit', label: 'Audit Log', cap: 'viewAudit' },
+  { href: '/users', label: 'Manage Users', cap: 'users.manage' },
+  { href: '/groups', label: 'Groups', cap: 'groups.manage' },
+  { href: '/roles', label: 'Roles & Permissions', cap: 'roles.manage' },
+  { href: '/settings', label: 'Organization', cap: 'org.settings.manage' },
+  { href: '/backups', label: 'Backups', cap: 'org.settings.manage' },
+  { href: '/audit', label: 'Audit Log', cap: 'audit.view' },
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -53,7 +56,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (loading || !user) return <div className="auth-wrap muted">Loading…</div>;
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
-  const visible = (items: NavItem[]) => items.filter((i) => !i.cap || allowed(user.role, i.cap));
+  const visible = (items: NavItem[]) => items.filter((i) => !i.cap || hasPermission(user, i.cap));
   const tabs = visible(TABS);
   const menuItems = [...visible(MODULES), ...visible(ADMIN), { href: '/profile', label: 'Profile' }];
   // The module toolbar (tabs) is only shown on the three list pages, not on detail pages.
@@ -72,7 +75,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="spacer" />
         {!showBar && (
           <nav className="topnav">
-            {allowed(user.role, 'viewSops') && <Link href="/folders">FOLDERS</Link>}
+            {hasPermission(user, 'sop.view') && <Link href="/folders">FOLDERS</Link>}
             {tabs.map((t) => (
               <Link key={t.href} href={t.href}>
                 {t.label}
@@ -93,7 +96,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <div className="menu-list" onMouseLeave={() => setMenu(false)}>
               <div className="menu-user">
                 <strong>{user.name}</strong>
-                <span className="muted">{ROLE_LABELS[user.role]}</span>
+                <span className="muted">{roleLabel(user.role)}</span>
               </div>
               {menuItems.map((i) => (
                 <Link key={i.href} href={i.href} className={isActive(i.href) ? 'active' : ''}>

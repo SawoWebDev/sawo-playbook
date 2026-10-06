@@ -1,7 +1,7 @@
 import { SopStatus, VersionLifecycleState } from '@prisma/client';
 import { Tx } from '../prisma/prisma.service';
 
-export const ACTIVE_UNPUBLISHED: VersionLifecycleState[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
+export const ACTIVE_UNPUBLISHED: VersionLifecycleState[] = ['DRAFT', 'PENDING_PRE_APPROVAL', 'PENDING_APPROVAL', 'APPROVED'];
 
 /** §6.2 precedence rule — pure function so it can be unit-tested exhaustively. */
 export function deriveSopStatus(input: {
@@ -10,7 +10,7 @@ export function deriveSopStatus(input: {
   hasPublished: boolean;
 }): SopStatus {
   if (input.archived) return 'archived';
-  if (input.activeState === 'PENDING_APPROVAL') return 'pending_approval';
+  if (input.activeState === 'PENDING_PRE_APPROVAL' || input.activeState === 'PENDING_APPROVAL') return 'pending_approval';
   if (input.activeState === 'APPROVED') return 'approved';
   if (input.activeState === 'DRAFT') return 'draft';
   if (input.hasPublished) return 'published';

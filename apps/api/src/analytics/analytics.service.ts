@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthUser } from '../common/auth-user';
+import { Permission } from '../common/permissions';
 import { PrismaService } from '../prisma/prisma.service';
 
 const DAY = 86_400_000;
@@ -19,7 +20,7 @@ export class AnalyticsService {
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) throw new BadRequestException('Invalid date range');
     if (to.getTime() - from.getTime() > 366 * DAY) throw new BadRequestException('Date range may not exceed one year');
 
-    const ownOnly = actor.role === 'EDITOR';
+    const ownOnly = !actor.permissions.has(Permission.AnalyticsViewAll);
     const scope = Prisma.sql`organization_id = ${actor.organizationId}::uuid AND occurred_at >= ${from} AND occurred_at <= ${to}
       ${ownOnly ? Prisma.sql`AND actor_id = ${actor.id}::uuid` : Prisma.empty}`;
 

@@ -7,7 +7,7 @@ import { Icons } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate, fmtDateTime } from '@/lib/format';
-import { allowed } from '@/lib/permissions';
+import { hasPermission } from '@/lib/permissions';
 import type { SopDetail, SopListItem, VersionDetail } from '@/lib/types';
 
 /** The subset of a SOP the dialogs need, so they work from both the list (SopListItem) and the detail page (SopDetail). */
@@ -48,10 +48,9 @@ export function SopCardMenu({
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busy, setBusy] = useState(false);
   const [up, setUp] = useState(false);
-  const role = user?.role;
-  const canEdit = allowed(role, 'editSops');
-  const canTrain = allowed(role, 'updateSkills');
-  const canSeeTraining = allowed(role, 'viewSkills');
+  const canEdit = hasPermission(user, 'sop.edit');
+  const canTrain = hasPermission(user, 'skills.update');
+  const canSeeTraining = hasPermission(user, 'skills.view');
   const pdfVersionId = sop.activeVersion?.id ?? sop.currentPublishedVersion?.id;
 
   async function run(fn: () => Promise<void>) {
@@ -347,6 +346,7 @@ function TrainingHistory({ sop, onClose }: { sop: SopListItem; onClose: () => vo
 
 const STATE_LABEL: Record<string, string> = {
   DRAFT: 'Draft',
+  PENDING_PRE_APPROVAL: 'Pending pre-approval',
   PENDING_APPROVAL: 'Pending approval',
   APPROVED: 'Approved',
   PUBLISHED: 'Published',

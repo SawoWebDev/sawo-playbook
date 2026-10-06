@@ -227,13 +227,15 @@ describe('backup & restore', () => {
 
     // Kanbans: one ordering from an SOP with a picture + extra image + prices, one plain URL kanban with no picture
     const img3 = await uploadMedia(a, Buffer.concat([PNG_1PX, Buffer.from('third-image')]), 'three.png');
-    const k1 = await ctx
+    const k1Draft = await ctx
       .http()
       .post('/api/kanbans')
       .set(as(a, 'EDITOR'))
       .send({ partCode: 'K-100', partDescription: 'Bearing 6204', supplier: 'ACME', supplierPartNo: 'A-1', orderQty: '100 PCS', pictureAssetId: img1, mediaAssetIds: [img3], orderingType: 'sop', orderingSopId: alpha.sopId, price: 12.5, carriage: 1.25, template: '02', tag: 'bearings', color: '#D0F0C0' })
       .expect(201);
-    await ctx.http().post('/api/kanbans').set(as(a, 'EDITOR')).send({ partCode: 'K-200', orderingType: 'url', orderingUrl: 'https://example.test/order' }).expect(201);
+    const k1 = await ctx.http().post(`/api/kanbans/revisions/${k1Draft.body.id}/publish`).set(as(a, "APPROVER")).expect(200);
+    const k200 = await ctx.http().post('/api/kanbans').set(as(a, 'EDITOR')).send({ partCode: 'K-200', orderingType: 'url', orderingUrl: 'https://example.test/order' }).expect(201);
+    await ctx.http().post(`/api/kanbans/revisions/${k200.body.id}/publish`).set(as(a, 'APPROVER')).expect(200);
     await ctx.prisma.kanban.update({ where: { id: k1.body.id }, data: { createdAt: new Date('2025-03-04T00:00:00Z'), updatedAt: new Date('2025-03-05T00:00:00Z') } });
 
     source = await exportBackup(a);

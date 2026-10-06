@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate } from '@/lib/format';
-import { allowed } from '@/lib/permissions';
+import { hasPermission } from '@/lib/permissions';
 
 interface OrgInfo {
   id: string;
@@ -87,7 +87,7 @@ export default function SettingsPage() {
         </button>
       </form>
 
-      {allowed(user?.role, 'deleteOrg') && (
+      {hasPermission(user, 'organization.delete') && (
         <div className="card" style={{ maxWidth: 560, marginTop: 24, borderColor: '#f1c4c0' }}>
           <h3 style={{ marginTop: 0, color: 'var(--danger)' }}>Delete organization</h3>
           {org.status === 'pending_deletion' ? (

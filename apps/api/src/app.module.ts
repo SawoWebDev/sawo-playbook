@@ -18,6 +18,8 @@ import { SopsModule } from './sops/sops.module';
 import { StorageModule } from './storage/storage.module';
 import { OrganizationModule } from './organization/organization.module';
 import { UsersModule } from './users/users.module';
+import { GroupsModule } from './groups/groups.module';
+import { RolesModule } from './roles/roles.module';
 import { PdfRendererModule } from './pdf/pdf-renderer.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { SkillsModule } from './skills/skills.module';
@@ -34,6 +36,8 @@ import { SkillsModule } from './skills/skills.module';
     MailModule,
     AuthModule,
     UsersModule,
+    GroupsModule,
+    RolesModule,
     OrganizationModule,
     StorageModule,
     PdfRendererModule,

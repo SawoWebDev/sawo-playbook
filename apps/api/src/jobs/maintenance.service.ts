@@ -129,6 +129,7 @@ export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
           await tx.sopVersionApproval.deleteMany({ where: org });
           await tx.sopStepMedia.deleteMany({ where: { sopStep: org } });
           await tx.kanbanMedia.deleteMany({ where: { kanban: org } });
+          await tx.kanbanRevision.deleteMany({ where: org });
           await tx.kanban.deleteMany({ where: org });
           await tx.sopStep.deleteMany({ where: org });
           await tx.sop.updateMany({ where: org, data: { currentPublishedVersionId: null, latestDraftVersionId: null, folderId: null } });
@@ -142,6 +143,8 @@ export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
           await tx.refreshToken.deleteMany({ where: { user: org } });
           await tx.passwordResetToken.deleteMany({ where: { user: org } });
           await tx.user.updateMany({ where: org, data: { createdById: null } });
+          await tx.groupMember.deleteMany({ where: org });
+          await tx.userGroup.deleteMany({ where: org });
           await tx.user.deleteMany({ where: org });
           await tx.organizationSettings.deleteMany({ where: org });
           // AuditLog rows and the organization tombstone are intentionally retained (compliance carve-out).

@@ -19,7 +19,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const off = client.onSessionChange(setUser);
+    // Every session change loads the server's authorisation context (permissions and groups) before the UI relies on it.
+    // The user is set straight away, so a page never redirects while the context is still loading.
+    const off = client.onSessionChange((u) => {
+      if (!u) {
+        setUser(null);
+        return;
+      }
+      setUser({ ...u, permissions: [], groupIds: [] });
+      client.fetchAuthContext()
+        .then((ctx) => setUser((prev) => (prev && prev.id === u.id ? { ...prev, ...ctx } : prev)))
+        .catch(() => undefined);
+    });
     // Restore the session from the HttpOnly refresh cookie on page load.
     client.refreshSession().finally(() => setLoading(false));
     return () => {

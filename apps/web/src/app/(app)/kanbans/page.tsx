@@ -8,12 +8,14 @@ import { splitTags, type Kanban } from '@/components/KanbanForm';
 import { Lightbox, type LightboxImage } from '@/components/Lightbox';
 import { OptButton } from '@/components/OptButton';
 import { Icons, SubbarRight } from '@/components/Subbar';
+import { KanbanRevisionBadge } from '@/components/StatusBadge';
 import { Item } from '@/components/SopCardMenu';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtListDate } from '@/lib/format';
-import { kanbanTitle } from '@/lib/kanban';
-import { allowed } from '@/lib/permissions';
+import { blockedReasons, fetchKanbanInbox, kanbanTitle } from '@/lib/kanban';
+import { hasPermission } from '@/lib/permissions';
+import type { KanbanInbox } from '@/lib/types';
 
 interface ListResponse {
   total: number;
@@ -51,8 +53,10 @@ function Kanbans() {
   const initialSearch = useSearchParams().get('search') ?? '';
   const { user } = useAuth();
   const router = useRouter();
-  const canEdit = allowed(user?.role, 'editKanbans');
+  const canEdit = hasPermission(user, 'kanban.edit');
   const [data, setData] = useState<ListResponse | null>(null);
+  /** Open revisions this user can see in the approval inbox. Null when the inbox is not available to them. */
+  const [inbox, setInbox] = useState<KanbanInbox | null>(null);
   const [q, setQ] = useState(() => ({
     search: initialSearch,
     sort: 'createdAt', // newest first, like gembadocs
@@ -87,9 +91,15 @@ function Kanbans() {
   }, [q]);
 
   useEffect(() => {
+    fetchKanbanInbox().then(setInbox, () => setInbox(null));
+  }, []);
+
+  useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
+
+  const blocked = useMemo(() => blockedReasons(inbox), [inbox]);
 
   const options = useMemo(() => {
     const all = data?.items ?? [];
@@ -345,6 +355,11 @@ function Kanbans() {
                 <div className="name" title={title}>
                   {title}
                 </div>
+                {k.openRevision && (
+                  <div className="line">
+                    <KanbanRevisionBadge state={k.openRevision.state} rejected={k.openRevision.state === 'DRAFT' && !!k.openRevision.comment} blocked={blocked.has(k.id)} />
+                  </div>
+                )}
                 <div className="line">Supplier Part No: <b>{k.supplierPartNo ?? 'N/A'}</b></div>
                 <div className="line">Created Date: <b>{fmtListDate(k.createdAt)}</b></div>
                 <div className="line">Tag: <b>{splitTags(k.tag).join(', ') || 'NO TAG'}</b></div>

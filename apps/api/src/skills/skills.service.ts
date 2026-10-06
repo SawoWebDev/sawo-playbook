@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma, SkillAssessment } from '@prisma/client';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
+import { effectivePermissions, Permission } from '../common/permissions';
 import { RequestMeta } from '../common/decorators';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { versionLabel } from '../sops/sop-status';
@@ -35,27 +36,13 @@ export class SkillsService {
   /** Associate ids whose rows the actor may see, or `null` for "all in org". */
   private async visibleAssociates(actor: AuthUser): Promise<string[] | null> {
     // Admins and Editors record training for everyone; (retired) Trainers see their trainees; Viewers their own row.
-    if (actor.role === 'OWNER' || actor.role === 'ADMIN' || actor.role === 'EDITOR') return null;
-    if (actor.role === 'TRAINER') {
-      const rows = await this.prisma.trainerAssignment.findMany({
-        where: { organizationId: actor.organizationId, trainerId: actor.id },
-        select: { associateId: true },
-      });
-      return [actor.id, ...rows.map((r) => r.associateId)];
-    }
-    return [actor.id]; // Operator/Viewer: own row only, read-only
+    if (actor.permissions.has(Permission.SkillsUpdate)) return null;
+    return [actor.id]; // read-only users see their own row only
   }
 
   private async assertCanAssess(actor: AuthUser, associateId: string) {
     if (associateId === actor.id) throw new ForbiddenException('You cannot assess yourself');
-    if (actor.role === 'TRAINER') {
-      const assigned = await this.prisma.trainerAssignment.findUnique({
-        where: { trainerId_associateId: { trainerId: actor.id, associateId } },
-      });
-      if (!assigned || assigned.organizationId !== actor.organizationId) {
-        throw new ForbiddenException('You can only assess your assigned trainees');
-      }
-    }
+    if (!actor.permissions.has(Permission.SkillsUpdate)) throw new ForbiddenException('You cannot record training assessments');
   }
 
   private async findAssociate(actor: AuthUser, id: string) {
@@ -94,11 +81,6 @@ export class SkillsService {
       include: { sopVersion: { select: { versionSequence: true } }, lastAssessment: { select: { assessedAt: true } } },
     });
     const currentBySop = new Map(sops.map((s) => [s.id, s.currentPublishedVersion?.id]));
-    const assignments = await this.prisma.trainerAssignment.findMany({
-      where: { organizationId: actor.organizationId, trainerId: actor.id },
-      select: { associateId: true },
-    });
-    const myTrainees = new Set(assignments.map((a) => a.associateId));
     return {
       levels: SKILL_LEVELS.map((label, value) => ({ value, label })),
       sops: sops.map((s) => ({
@@ -114,7 +96,7 @@ export class SkillsService {
         role: a.orgRole,
         editable:
           a.id !== actor.id &&
-          (actor.role === 'OWNER' || actor.role === 'ADMIN' || actor.role === 'EDITOR' || (actor.role === 'TRAINER' && myTrainees.has(a.id))),
+          actor.permissions.has(Permission.SkillsUpdate),
       })),
       cells: records.map((r) => ({
         associateId: r.associateId,
@@ -246,7 +228,7 @@ export class SkillsService {
 
   async listAssignments(actor: AuthUser) {
     const where: Prisma.TrainerAssignmentWhereInput = { organizationId: actor.organizationId };
-    if (actor.role === 'TRAINER') where.trainerId = actor.id;
+    if (!actor.permissions.has(Permission.SkillsUpdate)) where.trainerId = actor.id;
     const rows = await this.prisma.trainerAssignment.findMany({ where, orderBy: { createdAt: 'asc' } });
     const people = await this.prisma.user.findMany({
       where: { organizationId: actor.organizationId, id: { in: [...new Set(rows.flatMap((r) => [r.trainerId, r.associateId]))] } },
@@ -258,8 +240,11 @@ export class SkillsService {
 
   async assign(actor: AuthUser, trainerId: string, associateId: string) {
     const [trainer, associate] = await Promise.all([this.findAssociate(actor, trainerId), this.findAssociate(actor, associateId)]);
-    if (trainer.orgRole !== 'TRAINER') throw new BadRequestException('The selected user does not have the Trainer role');
     if (trainer.id === associate.id) throw new BadRequestException('A trainer cannot be assigned to themselves');
+    const settings = await this.prisma.organizationSettings.findUnique({ where: { organizationId: actor.organizationId }, select: { rolePermissions: true } });
+    if (!effectivePermissions(trainer.orgRole, settings?.rolePermissions).has(Permission.SkillsUpdate)) {
+      throw new BadRequestException('The selected user cannot record training assessments, so cannot be a trainer');
+    }
     try {
       await this.prisma.trainerAssignment.create({
         data: { organizationId: actor.organizationId, trainerId: trainer.id, associateId: associate.id, assignedById: actor.id },

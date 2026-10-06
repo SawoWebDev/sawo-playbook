@@ -87,7 +87,20 @@ export class AuthController {
 
   @Get('me')
   @RequirePermission(Permission.Authenticated)
+  /**
+   * The caller's identity plus the authorisation context the frontend needs for display only. Both values come from
+   * the guard's per-request load (the same source the guard enforces), so this adds no second permission calculation.
+   * The server still checks every request itself.
+   */
   me(@CurrentUser() user: AuthUser) {
-    return user;
+    return {
+      id: user.id,
+      organizationId: user.organizationId,
+      role: user.role,
+      email: user.email,
+      name: user.name,
+      permissions: [...user.permissions].filter((p) => p !== Permission.Authenticated).sort(),
+      groupIds: [...user.groupIds].sort(),
+    };
   }
 }

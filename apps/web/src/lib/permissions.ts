@@ -1,52 +1,37 @@
-import type { Role } from './api';
+import { useAuth } from './auth';
+import type { Role, SessionUser } from './api';
 
 /**
- * UI-only mirror of the §7.2 matrix, used to hide controls. The API's
- * AuthorizationGuard is the authority — never rely on this for security.
+ * Permission helpers for the UI. Visibility and enabled state come from the server's effective permissions
+ * (GET /auth/me). Nothing here maps a role name to a capability: the backend decides, and the API still enforces
+ * every request.
  */
-const ALL: Role[] = ['OWNER', 'ADMIN', 'EDITOR', 'APPROVER', 'TRAINER', 'OPERATOR'];
-/** Admin (and the account Owner): everything. Editor: create, edit, approve & publish. Viewer (OPERATOR): read-only. */
-const MANAGERS: Role[] = ['OWNER', 'ADMIN'];
-const AUTHORS: Role[] = ['OWNER', 'ADMIN', 'EDITOR'];
 
-export const can = {
-  manageUsers: MANAGERS,
-  manageSettings: MANAGERS,
-  editFolders: AUTHORS,
-  editSops: AUTHORS,
-  approveSops: AUTHORS,
-  publishSops: AUTHORS,
-  viewSops: ALL,
-  editKanbans: AUTHORS,
-  viewSkills: ['OWNER', 'ADMIN', 'EDITOR', 'OPERATOR'],
-  updateSkills: AUTHORS,
-  viewAnalytics: AUTHORS,
-  viewAudit: MANAGERS,
-  deleteOrg: ['OWNER'],
-} satisfies Record<string, Role[]>;
+/** Labels for the five assignable roles. OPERATOR is the wire value of the Viewer role. */
+export const ROLE_LABELS: Record<Role, string> = {
+  ADMIN: 'Admin',
+  OPERATOR: 'Viewer',
+  EDITOR: 'Editor',
+  PRE_APPROVER: 'Pre Approver',
+  APPROVER: 'Approver',
+};
 
-export type Capability = keyof typeof can;
+/** The roles that can be given to a person, in display order. */
+export const ASSIGNABLE_ROLES: Role[] = ['ADMIN', 'OPERATOR', 'EDITOR', 'PRE_APPROVER', 'APPROVER'];
 
-export function allowed(role: Role | undefined, cap: Capability): boolean {
-  return !!role && (can[cap] as Role[]).includes(role);
+/** Label for any role value from the API. Legacy values fall back to their raw name rather than a guessed label. */
+export function roleLabel(role: string | null | undefined): string {
+  if (!role) return '';
+  return ROLE_LABELS[role as Role] ?? role;
 }
 
-export const ROLE_LABELS: Record<Role, string> = {
-  OWNER: 'Owner',
-  ADMIN: 'Admin',
-  EDITOR: 'Editor',
-  APPROVER: 'Approver (retired)',
-  TRAINER: 'Trainer (retired)',
-  OPERATOR: 'Viewer',
-};
+/** Whether the signed-in user holds a permission, per the server's effective permission list. */
+export function hasPermission(user: Pick<SessionUser, 'permissions'> | null | undefined, permission: string): boolean {
+  return !!user?.permissions.includes(permission);
+}
 
-/** Roles that can be given to users. */
-export const ASSIGNABLE_ROLES: Role[] = ['ADMIN', 'EDITOR', 'OPERATOR'];
-
-/** What each role can do — shown next to the role pickers. */
-export const ROLE_SUMMARY: Partial<Record<Role, string>> = {
-  OWNER: 'Account holder: everything an Admin can do, plus deleting the organization.',
-  ADMIN: 'Full access: users, settings, audit log, SOPs, kanbans, folders, training — and approves / publishes.',
-  EDITOR: 'Creates and edits SOPs, kanbans and folders, approves and publishes them, and records training.',
-  OPERATOR: 'Read-only: views published SOPs and drafts, kanbans and their own training. Cannot change anything.',
-};
+/** Hook form: `const { can } = usePermissions();` then `can('kanban.publish')`. */
+export function usePermissions() {
+  const { user } = useAuth();
+  return { user, can: (permission: string) => hasPermission(user, permission) };
+}

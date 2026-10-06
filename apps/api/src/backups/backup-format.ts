@@ -67,7 +67,7 @@ export interface BackupApproval {
   createdAt: string;
 }
 
-export type BackupLifecycle = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'PUBLISHED';
+export type BackupLifecycle = 'DRAFT' | 'PENDING_PRE_APPROVAL' | 'PENDING_APPROVAL' | 'APPROVED' | 'PUBLISHED';
 
 export interface BackupVersion {
   id: string;

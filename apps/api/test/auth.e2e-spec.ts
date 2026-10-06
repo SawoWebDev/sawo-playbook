@@ -30,10 +30,10 @@ async function signup(email = `owner-${Date.now()}-${Math.random()}@acme.test`) 
 }
 
 describe('signup', () => {
-  it('creates org + default settings + active Owner and returns an access token', async () => {
+  it('creates org + default settings + active Admin and returns an access token', async () => {
     const { res } = await signup();
     expect(res.body.accessToken).toEqual(expect.any(String));
-    expect(res.body.user.role).toBe('OWNER');
+    expect(res.body.user.role).toBe('ADMIN');
     const settings = await ctx.prisma.organizationSettings.findUnique({
       where: { organizationId: res.body.user.organizationId },
     });
@@ -80,7 +80,7 @@ describe('login / me', () => {
     const res = await ctx.http().post('/api/auth/login').send({ email, password: TEST_PASSWORD }).expect(200);
     const me = await ctx.http().get('/api/auth/me').set('Authorization', `Bearer ${res.body.accessToken}`).expect(200);
     expect(me.body.organizationId).toBe(s.body.user.organizationId);
-    expect(me.body.role).toBe('OWNER');
+    expect(me.body.role).toBe('ADMIN');
   });
 
   it('rejects bad credentials with 401 and a generic message', async () => {

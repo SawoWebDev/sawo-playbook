@@ -11,7 +11,7 @@ import { Icons, SubbarLeft, SubbarRight } from '@/components/Subbar';
 import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate, fmtDateTime, fmtDuration, plural } from '@/lib/format';
-import { allowed } from '@/lib/permissions';
+import { hasPermission } from '@/lib/permissions';
 import { buildTree, flatten, type FolderRow } from '@/lib/folders';
 import type { ApprovalHistory, SopDetail, VersionDetail } from '@/lib/types';
 
@@ -120,23 +120,22 @@ function SopDetailView() {
   if (error && !sop) return <div className="error">{error}</div>;
   if (!sop) return <p className="muted">Loading…</p>;
 
-  const role = user?.role;
-  const canEdit = allowed(role, 'editSops') && !sop.archivedAt;
-  const canApprove = allowed(role, 'approveSops');
-  const canPublish = allowed(role, 'publishSops');
+  const canEdit = hasPermission(user, 'sop.edit') && !sop.archivedAt;
   const v = version;
   const vUrl = v ? `/sops/${id}/versions/${v.id}` : '';
-  const isSubmitter = !!v && approvals?.submittedById === user?.id;
-  const alreadyVoted =
-    !!approvals && approvals.decisions.some((d) => d.round === approvals.currentApprovalRound && d.approver.id === user?.id);
+  // Every approval action comes from the server's `actions` on the approvals response. Role names are never checked.
+  const actions = approvals?.actions;
+  const quorum = approvals?.quorum;
   const lastRejection =
     v?.lifecycleState === 'DRAFT' ? approvals?.decisions.find((d) => d.decision === 'rejected' && d.round === approvals.currentApprovalRound) : undefined;
-  const hasActions =
-    !!v &&
-    ((allowed(role, 'editSops') && ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(v.lifecycleState)) ||
-      (canApprove && v.lifecycleState === 'PENDING_APPROVAL') ||
-      (canPublish && v.lifecycleState === 'APPROVED') ||
-      (v.lifecycleState === 'PUBLISHED' && v.id === sop.currentPublishedVersionId && v.config.checklist_sop));
+  const skippedBy = approvals?.preApprovalSkippedBy
+    ? (approvals.decisions.find((d) => d.approver.id === approvals.preApprovalSkippedBy)?.approver.name ?? 'an Approver')
+    : null;
+  const routingNames = approvals?.routingGroups.map((g) => g.name ?? '—').join(', ');
+  const canDiscard = !!v && hasPermission(user, 'sop.edit') && ['DRAFT', 'PENDING_PRE_APPROVAL', 'PENDING_APPROVAL', 'APPROVED'].includes(v.lifecycleState);
+  const canStartChecklist = !!v && v.lifecycleState === 'PUBLISHED' && v.id === sop.currentPublishedVersionId && v.config.checklist_sop;
+  const canSubmitOrPublish = !!v && v.lifecycleState === 'DRAFT' && hasPermission(user, 'sop.edit');
+  const hasActions = canSubmitOrPublish || !!actions?.preApprove || !!actions?.approve || !!actions?.reject || !!actions?.publish || canDiscard || canStartChecklist;
   const qrLink = typeof window !== 'undefined' ? `${window.location.origin}/s/${sop.qrPublicToken}` : '';
 
   return (
@@ -216,7 +215,7 @@ function SopDetailView() {
                 <dt>Last modified</dt>
                 <dd>{fmtDate(sop.updatedAt)}</dd>
               </dl>
-              {allowed(role, 'editSops') && (
+              {hasPermission(user, 'sop.edit') && (
                 <button
                   onClick={() => {
                     setMore(false);
@@ -308,47 +307,98 @@ function SopDetailView() {
         </div>
 
         <aside className="panel">
-          {v && hasActions && (
+          {v && (
             <div className="card">
+              <div className="info-label">Version {v.label}</div>
+              <div style={{ marginTop: 4 }}>
+                <VersionStateBadge state={v.lifecycleState} />
+              </div>
+              {approvals && approvals.routingGroups.length > 0 && (
+                <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>
+                  Routed to {routingNames}
+                </p>
+              )}
+            </div>
+          )}
+
+          {v && approvals && (approvals.blocked || approvals.preApprovalSkipped) && (
+            <div className="card" style={{ marginTop: 12 }}>
+              {approvals.blocked && (
+                <p style={{ margin: 0 }}>
+                  <span className="badge badge-red">Blocked</span> {approvals.blockedReason}
+                </p>
+              )}
+              {approvals.preApprovalSkipped && (
+                <p style={{ margin: approvals.blocked ? '8px 0 0' : 0 }}>
+                  <span className="badge badge-amber">Pre Approval skipped</span> by {skippedBy}. Their vote counts as one final approval.
+                </p>
+              )}
+            </div>
+          )}
+
+          {v && hasActions && (
+            <div className="card" style={{ marginTop: 12 }}>
               <h3>Actions</h3>
               <div className="panel">
-                {allowed(role, 'editSops') && v.lifecycleState === 'DRAFT' && !approvalRequired && (
-                  <button className="btn" disabled={busy || v.steps.length === 0} onClick={() => act(() => api(`${vUrl}/finish`, { method: 'POST', body: {} }), 'Version published.')}>
-                    Publish
-                  </button>
-                )}
-                {allowed(role, 'editSops') && v.lifecycleState === 'DRAFT' && approvalRequired && (
+                {canSubmitOrPublish && approvalRequired && (
                   <button className="btn" disabled={busy || v.steps.length === 0} onClick={() => act(() => api(`${vUrl}/submit`, { method: 'POST', body: {} }), 'Submitted for approval.')}>
                     Submit for approval
                   </button>
                 )}
-                {canApprove && v.lifecycleState === 'PENDING_APPROVAL' && (
+                {canSubmitOrPublish && !approvalRequired && hasPermission(user, 'sop.publish') && (
+                  <button className="btn" disabled={busy || v.steps.length === 0} onClick={() => act(() => api(`${vUrl}/finish`, { method: 'POST', body: {} }), 'Version published.')}>
+                    Publish
+                  </button>
+                )}
+
+                {actions?.preApprove && (
+                  <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`${vUrl}/pre-approve`, { method: 'POST' }), 'Pre-approved. Waiting for final approval.')}>
+                    Pre Approve
+                  </button>
+                )}
+
+                {(actions?.approve || actions?.reject) && (
                   <>
-                    {isSubmitter && !approvals?.allowSelfApproval ? (
-                      <p className="muted">You submitted this version, so you cannot approve it.</p>
-                    ) : alreadyVoted ? (
-                      <p className="muted">You have already recorded your decision for this round.</p>
-                    ) : (
-                      <>
-                        <textarea placeholder="Comment (required to reject)" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} />
-                        <div className="row">
-                          <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`${vUrl}/decisions`, { method: 'POST', body: { decision: 'approved', comment } }), 'Approval recorded.')}>
-                            Approve
-                          </button>
-                          <button className="btn btn-danger" disabled={busy || !comment.trim()} onClick={() => act(() => api(`${vUrl}/decisions`, { method: 'POST', body: { decision: 'rejected', comment } }), 'Version rejected and returned to draft.')}>
-                            Reject
-                          </button>
-                        </div>
-                      </>
+                    {actions.approve && v.lifecycleState === 'PENDING_PRE_APPROVAL' && (
+                      <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+                        Approving now skips Pre Approval. This counts as one final approval and is not a pre-approval.
+                      </p>
                     )}
+                    <textarea placeholder="Comment (required to reject)" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} />
+                    <div className="row">
+                      {actions.approve && (
+                        <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`${vUrl}/decisions`, { method: 'POST', body: { decision: 'approved', comment } }), 'Approval recorded.')}>
+                          Approve
+                        </button>
+                      )}
+                      {actions.reject && (
+                        <button className="btn btn-danger" disabled={busy || !comment.trim()} onClick={() => act(() => api(`${vUrl}/reject`, { method: 'POST', body: { comment: comment.trim() } }), 'Returned to draft with your reason.')}>
+                          Reject
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
-                {canPublish && v.lifecycleState === 'APPROVED' && (
+
+                {actions?.publish && (
                   <button className="btn btn-primary" disabled={busy} onClick={() => act(() => api(`${vUrl}/publish`, { method: 'POST' }), 'Version published.')}>
                     Publish
                   </button>
                 )}
-                {allowed(role, 'editSops') && ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(v.lifecycleState) && (
+
+                {v.lifecycleState === 'APPROVED' && !actions?.publish && (
+                  <p className="muted" style={{ margin: 0 }}>Approved. A publisher must publish it.</p>
+                )}
+
+                {v.lifecycleState === 'PENDING_APPROVAL' && !actions?.approve && approvals?.submittedById === user?.id && !approvals?.allowSelfApproval && (
+                  <p className="muted" style={{ margin: 0 }}>You submitted this version, so you cannot approve it.</p>
+                )}
+
+                {quorum?.currentUserApproved && (v.lifecycleState === 'PENDING_APPROVAL' || v.lifecycleState === 'PENDING_PRE_APPROVAL') && (
+                  <p className="muted" style={{ margin: 0 }}>You have already recorded your approval for this round.</p>
+                )}
+
+                {canDiscard && (
                   <button
                     className="btn btn-danger"
                     disabled={busy}
@@ -361,7 +411,7 @@ function SopDetailView() {
                     Discard draft
                   </button>
                 )}
-                {v.lifecycleState === 'PUBLISHED' && v.id === sop.currentPublishedVersionId && v.config.checklist_sop && (
+                {canStartChecklist && (
                   <button
                     className="btn btn-primary"
                     disabled={busy}
@@ -379,28 +429,37 @@ function SopDetailView() {
             </div>
           )}
 
-          {approvals && approvals.decisions.length + (v?.lifecycleState === 'PENDING_APPROVAL' ? 1 : 0) > 0 && (
-            <div className="card">
+          {approvals && (approvals.decisions.length > 0 || approvals.stage) && (
+            <div className="card" style={{ marginTop: 12 }}>
               <h3>Approvals</h3>
-              {v?.lifecycleState === 'PENDING_APPROVAL' && (
-                <p>
-                  <strong>
-                    {approvals.approvedInCurrentRound}/{approvals.quorum}
-                  </strong>{' '}
-                  approved (round {approvals.currentApprovalRound})
-                </p>
+              {approvals.stage === 'pre' && <p style={{ margin: '0 0 8px' }}>Waiting for <strong>Pre Approval</strong>.</p>}
+              {approvals.stage === 'final' && quorum && (
+                <div style={{ marginBottom: 8 }}>
+                  <p style={{ margin: 0 }}>
+                    <strong>
+                      {quorum.current} / {quorum.required} approvals
+                    </strong>{' '}
+                    <span className="muted">(round {approvals.currentApprovalRound})</span>
+                  </p>
+                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                    {quorum.remaining > 0 ? `${quorum.remaining} more needed` : 'Quorum reached'} · eligible approvers {quorum.eligibleApproverCount} · available now{' '}
+                    {quorum.availableApproverCount}
+                  </p>
+                </div>
               )}
-              <ul style={{ paddingLeft: 18, margin: 0 }}>
-                {approvals.decisions.map((d) => (
-                  <li key={d.id} style={{ marginBottom: 6 }}>
-                    <span className={`badge ${d.decision === 'approved' ? 'badge-green' : 'badge-red'}`}>{d.decision}</span> {d.approver.name}{' '}
-                    <span className="muted">
-                      · round {d.round} · {fmtDateTime(d.createdAt)}
-                    </span>
-                    {d.comment && <div className="muted">“{d.comment}”</div>}
-                  </li>
-                ))}
-              </ul>
+              {approvals.decisions.length > 0 && (
+                <ul style={{ paddingLeft: 18, margin: 0 }}>
+                  {approvals.decisions.map((d) => (
+                    <li key={d.id} style={{ marginBottom: 6 }}>
+                      <span className={`badge ${d.decision === 'approved' ? 'badge-green' : 'badge-red'}`}>{d.decision}</span> {d.approver.name}{' '}
+                      <span className="muted">
+                        · {d.stage === 'pre' ? 'pre-approval' : 'approval'} · round {d.round} · {fmtDateTime(d.createdAt)}
+                      </span>
+                      {d.comment && <div className="muted">“{d.comment}”</div>}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDate, fmtDateTime } from '@/lib/format';
-import { allowed, ROLE_LABELS } from '@/lib/permissions';
+import { hasPermission, roleLabel } from '@/lib/permissions';
 import type { Role } from '@/lib/api';
 
 interface Matrix {
@@ -54,7 +54,7 @@ export default function SkillsPage() {
   const [level, setLevel] = useState(0);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const canUpdate = allowed(user?.role, 'updateSkills');
+  const canUpdate = hasPermission(user, 'skills.update');
 
   const load = useCallback(async () => {
     try {
@@ -123,7 +123,7 @@ export default function SkillsPage() {
               {m.associates.map((a) => (
                 <tr key={a.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {a.name} <span className="muted">· {ROLE_LABELS[a.role]}</span>
+                    {a.name} <span className="muted">· {roleLabel(a.role)}</span>
                   </td>
                   {m.sops.map((s) => {
                     const c = cellOf(a.id, s.id);

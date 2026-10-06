@@ -55,13 +55,13 @@ export class SkillsController {
 
   @Post('rebuild')
   @HttpCode(200)
-  @RequirePermission(Permission.TrainerAssign)
+  @RequirePermission(Permission.SkillsUpdate)
   rebuild(@CurrentUser() actor: AuthUser) {
     return this.skills.rebuild(actor);
   }
 
   @Get('trainers')
-  @RequirePermission(Permission.SkillsUpdate)
+  @RequirePermission(Permission.TrainerAssign)
   assignments(@CurrentUser() actor: AuthUser) {
     return this.skills.listAssignments(actor);
   }

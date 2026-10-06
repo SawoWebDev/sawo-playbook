@@ -23,7 +23,7 @@ export class SearchService {
   async search(actor: AuthUser, q: string, limit = 20) {
     const query = toPrefixQuery(q);
     if (!query) return { sops: [], kanbans: [] };
-    const drafts = canSeeUnpublished(actor.role);
+    const drafts = canSeeUnpublished(actor);
 
     const sops = await this.prisma.$queryRaw<
       { id: string; name: string; reference_no: string; status: string; seq: number | null; rank: number; in_meta: boolean; in_published: boolean; in_draft: boolean }[]

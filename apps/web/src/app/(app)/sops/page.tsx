@@ -11,7 +11,7 @@ import { api, apiRaw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { buildTree, flatten, type FolderRow } from '@/lib/folders';
 import { errorMessage, fmtListDate } from '@/lib/format';
-import { allowed } from '@/lib/permissions';
+import { hasPermission } from '@/lib/permissions';
 import type { SopDetail, SopListItem, SopType } from '@/lib/types';
 
 const SORT_OPTIONS = [
@@ -164,7 +164,7 @@ function SopsList() {
   }, [hasMore, items.length, load]);
 
   const folderOptions = flatten(buildTree(folders));
-  const canCreate = allowed(user?.role, 'editSops');
+  const canCreate = hasPermission(user, 'sop.edit');
   const togglePopover = (p: Exclude<Popover, null>) => setPopover((cur) => (cur === p ? null : p));
   const activeFilters = [status, type, folder, checklistOnly ? '1' : '', creatorKey].filter(Boolean).length;
 
@@ -213,7 +213,7 @@ function SopsList() {
     }
   }
 
-  const isManager = allowed(user?.role, 'manageSettings');
+  const isManager = hasPermission(user, 'org.settings.manage');
 
   /** Starts a full backup and shows its live progress in a new tab (opened first so the click isn't treated as a popup). */
   async function startBackup() {
@@ -457,7 +457,7 @@ function SopsList() {
                     {s.activeVersion?.rejected ? (
                       <span className="badge badge-red">Rejected</span>
                     ) : (
-                      <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} />
+                      <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} lifecycle={s.activeVersion?.lifecycleState} />
                     )}
                   </span>
                 )}
@@ -508,7 +508,7 @@ function SopsList() {
                     {s.activeVersion?.rejected ? (
                       <span className="badge badge-red">Rejected</span>
                     ) : (
-                      <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} />
+                      <SopStatusBadge status={s.status} approvals={s.activeVersion?.approvals} quorum={s.activeVersion?.quorum} lifecycle={s.activeVersion?.lifecycleState} />
                     )}
                   </td>
                   <td>{fmtListDate(s.createdAt)}</td>

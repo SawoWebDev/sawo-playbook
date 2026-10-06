@@ -1,6 +1,6 @@
 import { TrackActivity } from '../analytics/activity.service';
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, StreamableFile } from '@nestjs/common';
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import type { Response } from 'express';
 import { AuthUser } from '../common/auth-user';
 import { CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
@@ -17,6 +17,10 @@ class SubmitDto {
 class DecisionDto {
   @IsIn(['approved', 'rejected']) decision!: 'approved' | 'rejected';
   @IsOptional() @IsString() @MaxLength(4000) comment?: string;
+}
+
+class RejectSopDto {
+  @IsString() @MinLength(1) @MaxLength(4000) comment!: string;
 }
 
 class ArchiveDto {
@@ -37,6 +41,13 @@ export class SopsController {
     return this.sops.list(actor, q);
   }
 
+  /** SOP approval inbox: scoped server-side to the caller's permissions and routed groups. */
+  @Get('approvals')
+  @RequirePermission(Permission.SopView)
+  approvalInbox(@CurrentUser() actor: AuthUser) {
+    return this.workflow.inbox(actor);
+  }
+
   @Get('export.csv')
   @RequirePermission(Permission.SopView)
   async exportCsv(@CurrentUser() actor: AuthUser, @Res({ passthrough: true }) res: Response) {
@@ -52,11 +63,12 @@ export class SopsController {
     return this.sops.bulkImportCsv(actor, dto);
   }
 
+  /** Folder moves need edit; archive/unarchive needs publish (enforced in the service). */
   @Patch('bulk')
   @RequirePermission(Permission.SopEdit)
   @TrackActivity({ event: 'sop.bulk_edited', entity: 'sop' })
-  bulkEdit(@CurrentUser() actor: AuthUser, @Body() dto: SopBulkEditDto) {
-    return this.sops.bulkEdit(actor, dto);
+  bulkEdit(@CurrentUser() actor: AuthUser, @Body() dto: SopBulkEditDto, @ReqMeta() meta: RequestMeta) {
+    return this.sops.bulkEdit(actor, dto, meta);
   }
 
   @Post()
@@ -80,9 +92,9 @@ export class SopsController {
 
   @Post(':id/archive')
   @HttpCode(200)
-  @RequirePermission(Permission.SopEdit)
-  archive(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ArchiveDto) {
-    return this.sops.setArchived(actor, id, dto.archived);
+  @RequirePermission(Permission.SopPublish)
+  archive(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ArchiveDto, @ReqMeta() meta: RequestMeta) {
+    return this.sops.setArchived(actor, id, dto.archived, meta);
   }
 
   @Delete(':id')
@@ -165,6 +177,22 @@ export class SopsController {
     return this.workflow.submit(actor, id, vid, dto.changeSummary, meta);
   }
 
+  @Post(':id/versions/:vid/pre-approve')
+  @HttpCode(200)
+  @RequirePermission(Permission.SopPreApprove)
+  @TrackActivity({ event: 'sop.version.pre_approved', entity: 'sop', id: 'param:id', params: ['vid'] })
+  preApprove(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('vid', ParseUUIDPipe) vid: string, @ReqMeta() meta: RequestMeta) {
+    return this.workflow.preApprove(actor, id, vid, meta);
+  }
+
+  @Post(':id/versions/:vid/reject')
+  @HttpCode(200)
+  @RequirePermission(Permission.SopReview)
+  @TrackActivity({ event: 'sop.version.rejected', entity: 'sop', id: 'param:id', params: ['vid'] })
+  reject(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('vid', ParseUUIDPipe) vid: string, @Body() dto: RejectSopDto, @ReqMeta() meta: RequestMeta) {
+    return this.workflow.reject(actor, id, vid, dto.comment, meta);
+  }
+
   @Post(':id/versions/:vid/decisions')
   @HttpCode(200)
   @RequirePermission(Permission.SopApprove)
@@ -198,10 +226,10 @@ export class SopsController {
     return this.workflow.publish(actor, id, vid, meta);
   }
 
-  /** Save-and-publish without approval (only when the organization does not require approval). */
+  /** Save-and-publish without approval (only when the organization does not require approval). Publishing, so it needs sop.publish. */
   @Post(':id/versions/:vid/finish')
   @HttpCode(200)
-  @RequirePermission(Permission.SopEdit)
+  @RequirePermission(Permission.SopPublish)
   @TrackActivity({ event: 'sop.version.published', entity: 'sop', id: 'param:id', params: ['vid'] })
   finish(
     @CurrentUser() actor: AuthUser,

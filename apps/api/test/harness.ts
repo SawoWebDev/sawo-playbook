@@ -73,6 +73,9 @@ export async function createTenant(ctx: TestContext, label = 'org'): Promise<Ten
   passwordHashCache ??= argon2.hash(TEST_PASSWORD);
   const passwordHash = await passwordHashCache;
 
+  // Every non-Admin test user belongs to the organisation's General group, as real non-Admin users must.
+  const general = await ctx.prisma.userGroup.create({ data: { organizationId: org.id, name: 'General' } });
+
   const addUser = async (role: OrgRole, userLabel = role.toLowerCase()): Promise<TenantUser> => {
     const user = await ctx.prisma.user.create({
       data: {
@@ -84,13 +87,17 @@ export async function createTenant(ctx: TestContext, label = 'org'): Promise<Ten
         passwordHash,
       },
     });
+    if (role !== 'ADMIN' && role !== 'OWNER') {
+      await ctx.prisma.groupMember.create({ data: { groupId: general.id, userId: user.id, organizationId: org.id } });
+    }
     const token = ctx.tokens.signAccessToken(user);
     return { user, token, auth: { Authorization: `Bearer ${token}` } };
   };
 
   const users = {} as Record<OrgRole, TenantUser>;
   for (const role of Object.values(OrgRole)) users[role] = await addUser(role);
-  const reviewer = await addUser('EDITOR', 'reviewer');
+  // Approvals need a role that holds the approve permission; Editors no longer approve by default.
+  const reviewer = await addUser('APPROVER', 'reviewer');
   return { organizationId: org.id, users, reviewer, addUser };
 }
 

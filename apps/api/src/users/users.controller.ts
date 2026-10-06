@@ -1,9 +1,9 @@
 import { TrackActivity } from '../analytics/activity.service';
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from "@nestjs/common";
 import { AuthUser } from '../common/auth-user';
 import { CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
-import { BulkInviteDto, ChangeRoleDto, InviteDto } from './users.dto';
+import { BulkInviteDto, ChangeRoleDto, InviteDto, UpdateUserDto } from './users.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -79,5 +79,17 @@ export class UsersController {
   @RequirePermission(Permission.UsersManage)
   resetMfa(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqMeta() meta: RequestMeta) {
     return this.users.resetMfa(actor, id, meta);
+  }
+
+  @Get(':id')
+  @RequirePermission(Permission.UsersManage)
+  get(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.users.get(actor, id);
+  }
+
+  @Patch(':id')
+  @RequirePermission(Permission.UsersManage)
+  updateProfile(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto, @ReqMeta() meta: RequestMeta) {
+    return this.users.updateProfile(actor, id, dto, meta);
   }
 }

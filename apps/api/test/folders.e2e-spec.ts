@@ -20,12 +20,12 @@ const mk = (t: Tenant, name: string, parentId?: string) =>
   ctx.http().post('/api/folders').set(as(t, 'EDITOR')).send({ name, parentId });
 
 describe('folders', () => {
-  it('Editor+ creates a tree; Operator/Approver cannot', async () => {
+  it('Editor+ creates a tree; Operator and Approver cannot', async () => {
     const root = await mk(a, 'Assembly').expect(201);
     const child = await mk(a, 'Line 1', root.body.id).expect(201);
     expect(child.body.parentId).toBe(root.body.id);
     await ctx.http().post('/api/folders').set(as(a, 'OPERATOR')).send({ name: 'x' }).expect(403);
-    await ctx.http().post('/api/folders').set(as(a, 'APPROVER')).send({ name: 'x' }).expect(403);
+    await ctx.http().post('/api/folders').set(as(a, 'APPROVER')).send({ name: 'Approver folder' }).expect(403); // folder management is not part of approval
     const list = await ctx.http().get('/api/folders').set(as(a, 'OPERATOR')).expect(200);
     expect(list.body.map((f: { name: string }) => f.name)).toEqual(expect.arrayContaining(['Assembly', 'Line 1']));
   });

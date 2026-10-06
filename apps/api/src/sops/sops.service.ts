@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrgRole, Prisma, Sop } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuthUser } from '../common/auth-user';
 import { csvCell, parseCsvWithHeader } from '../common/csv';
 import { FoldersService } from '../folders/folders.service';
-import { Permission, roleHasPermission } from '../common/permissions';
+import { hasPermission, Permission } from '../common/permissions';
+import { RequestMeta } from '../common/decorators';
+import { AuditAction, AuditService } from '../audit/audit.service';
 import { MediaService, MediaView } from '../media/media.service';
 import { markAttached, reevaluateMedia } from '../media/media-lifecycle';
 import { isUniqueViolation, PrismaService, Tx } from '../prisma/prisma.service';
@@ -46,8 +48,8 @@ export type VersionConfig = typeof DEFAULT_CONFIG;
  * Every role may see unpublished (draft) versions — Viewers read drafts too, they just cannot change anything.
  * Kept as a function so call sites stay explicit about the rule.
  */
-export function canSeeUnpublished(role: OrgRole): boolean {
-  return roleHasPermission(role, Permission.SopView);
+export function canSeeUnpublished(actor: { permissions: ReadonlySet<Permission> }): boolean {
+  return hasPermission(actor, Permission.SopView);
 }
 
 const userBrief = { select: { id: true, name: true } } as const;
@@ -71,6 +73,7 @@ export class SopsService {
     private readonly repo: SopVersionRepository,
     private readonly media: MediaService,
     private readonly folders: FoldersService,
+    private readonly audit: AuditService,
   ) {}
 
   // ───────────────────────── queries ─────────────────────────
@@ -81,7 +84,7 @@ export class SopsService {
       where: { id: sopId, organizationId: actor.organizationId, deletedAt: null },
     });
     if (!sop) throw new NotFoundException('SOP not found');
-    if (!canSeeUnpublished(actor.role) && (!sop.currentPublishedVersionId || sop.archivedAt)) {
+    if (!canSeeUnpublished(actor) && (!sop.currentPublishedVersionId || sop.archivedAt)) {
       throw new NotFoundException('SOP not found');
     }
     return sop;
@@ -89,7 +92,7 @@ export class SopsService {
 
   async list(actor: AuthUser, q: ListSopsQuery) {
     const where: Prisma.SopWhereInput = { organizationId: actor.organizationId, deletedAt: null };
-    if (!canSeeUnpublished(actor.role)) {
+    if (!canSeeUnpublished(actor)) {
       where.currentPublishedVersionId = { not: null };
       where.archivedAt = null;
     }
@@ -160,7 +163,7 @@ export class SopsService {
       rows.map((r) => r.latestDraftVersion).filter((v): v is NonNullable<typeof v> => !!v && v.lifecycleState === 'DRAFT'),
     );
 
-    const showDrafts = canSeeUnpublished(actor.role);
+    const showDrafts = canSeeUnpublished(actor);
     return {
       total,
       facets: { creators: creatorRoster },
@@ -196,7 +199,7 @@ export class SopsService {
   /** Full creator roster for the "Created By" filter — independent of the current filters, so the list stays stable. */
   private async creatorFacets(actor: AuthUser): Promise<{ id: string; name: string }[]> {
     const where: Prisma.SopWhereInput = { organizationId: actor.organizationId, deletedAt: null };
-    if (!canSeeUnpublished(actor.role)) {
+    if (!canSeeUnpublished(actor)) {
       where.currentPublishedVersionId = { not: null };
       where.archivedAt = null;
     }
@@ -236,7 +239,7 @@ export class SopsService {
 
   async get(actor: AuthUser, sopId: string) {
     const sop = await this.findSop(actor, sopId);
-    const showDrafts = canSeeUnpublished(actor.role);
+    const showDrafts = canSeeUnpublished(actor);
     const [versions, folder, createdBy] = await Promise.all([
       this.prisma.sopVersion.findMany({
         where: {
@@ -296,7 +299,7 @@ export class SopsService {
       where: { id: versionId, sopId, organizationId: actor.organizationId },
       include: versionInclude,
     });
-    if (!v || (v.lifecycleState !== 'PUBLISHED' && !canSeeUnpublished(actor.role))) {
+    if (!v || (v.lifecycleState !== 'PUBLISHED' && !canSeeUnpublished(actor))) {
       throw new NotFoundException('Version not found');
     }
     return this.versionView(v);
@@ -404,7 +407,7 @@ export class SopsService {
   /** Copies an SOP's newest content (open draft, else the published version) into a new SOP. */
   async duplicate(actor: AuthUser, sopId: string) {
     const src = await this.findSop(actor, sopId);
-    const seed = (canSeeUnpublished(actor.role) && src.latestDraftVersionId) || src.currentPublishedVersionId;
+    const seed = (canSeeUnpublished(actor) && src.latestDraftVersionId) || src.currentPublishedVersionId;
     if (!seed) throw new BadRequestException('This SOP has no content to duplicate');
     const name = `${src.name} (Copy)`.slice(0, 300);
     return this.create(actor, { name, type: src.type as CreateSopDto['type'], folderId: src.folderId ?? undefined }, seed);
@@ -471,20 +474,33 @@ export class SopsService {
     return this.get(actor, sopId);
   }
 
-  async setArchived(actor: AuthUser, sopId: string, archived: boolean) {
+  /**
+   * Archiving changes the effective published/live state, so it requires publish authority (not just edit).
+   * Audited separately from ordinary edits.
+   */
+  async setArchived(actor: AuthUser, sopId: string, archived: boolean, meta: RequestMeta) {
+    if (!hasPermission(actor, Permission.SopPublish)) throw new ForbiddenException('Archiving changes what is live and requires publish permission');
     await this.findSop(actor, sopId);
     await this.prisma.$transaction(async (tx) => {
+      const before = await tx.sop.findUniqueOrThrow({ where: { id: sopId }, select: { archivedAt: true } });
       await tx.sop.update({ where: { id: sopId }, data: { archivedAt: archived ? new Date() : null } });
       await recomputeSopStatus(tx, sopId);
+      await this.audit.record(
+        { action: AuditAction.SopArchived, organizationId: actor.organizationId, actorId: actor.id, entityType: 'sop', entityId: sopId, metadata: { archived, previouslyArchived: !!before.archivedAt }, ...meta },
+        tx,
+      );
     });
     return this.get(actor, sopId);
   }
 
   /** Bulk move-to-folder and/or archive/unarchive for a selection of SOPs. */
-  async bulkEdit(actor: AuthUser, dto: SopBulkEditDto) {
+  async bulkEdit(actor: AuthUser, dto: SopBulkEditDto, meta: RequestMeta) {
     const ids = [...new Set(dto.ids)];
     const { patch } = dto;
     if (patch.folderId === undefined && patch.archived === undefined) throw new BadRequestException('Nothing to update');
+    if (patch.archived !== undefined && !hasPermission(actor, Permission.SopPublish)) {
+      throw new ForbiddenException('Archiving changes what is live and requires publish permission');
+    }
     if (patch.folderId) await this.assertFolder(actor, patch.folderId);
     return this.prisma.$transaction(async (tx) => {
       const owned = await tx.sop.count({ where: { id: { in: ids }, organizationId: actor.organizationId, deletedAt: null } });
@@ -495,6 +511,10 @@ export class SopsService {
       if (patch.archived !== undefined) {
         await tx.sop.updateMany({ where: { id: { in: ids } }, data: { archivedAt: patch.archived ? new Date() : null } });
         for (const id of ids) await recomputeSopStatus(tx, id);
+        await this.audit.record(
+          { action: AuditAction.SopArchived, organizationId: actor.organizationId, actorId: actor.id, entityType: 'sop', metadata: { bulk: true, archived: patch.archived, count: ids.length }, ...meta },
+          tx,
+        );
       }
       return { updated: ids.length };
     });
@@ -642,7 +662,7 @@ export class SopsService {
 
   async exportCsv(actor: AuthUser): Promise<string> {
     const where: Prisma.SopWhereInput = { organizationId: actor.organizationId, deletedAt: null };
-    if (!canSeeUnpublished(actor.role)) {
+    if (!canSeeUnpublished(actor)) {
       where.currentPublishedVersionId = { not: null };
       where.archivedAt = null;
     }

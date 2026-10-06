@@ -2,19 +2,24 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  IsArray,
   IsEmail,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 import { OrgRole } from '@prisma/client';
+import { ASSIGNABLE_ROLES } from '../common/permissions';
 
 export class InviteDto {
   @IsEmail() @MaxLength(320) email!: string;
-  @IsEnum(OrgRole) role!: OrgRole;
+  @IsIn(ASSIGNABLE_ROLES) role!: OrgRole;
+  /** Groups the invitee joins on acceptance. Required for every non-Admin role; checked by the service. */
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) groupIds?: string[];
 }
 
 export class BulkInviteDto {
@@ -31,7 +36,7 @@ export class BulkInviteDto {
 }
 
 export class ChangeRoleDto {
-  @IsEnum(OrgRole) role!: OrgRole;
+  @IsIn(ASSIGNABLE_ROLES) role!: OrgRole;
 }
 
 export class AcceptInviteDto {
@@ -65,4 +70,9 @@ export class MfaCodeDto {
 export class MfaDisableDto {
   @IsString() @MinLength(1) @MaxLength(200) password!: string;
   @IsString() @MinLength(6) @MaxLength(8) code!: string;
+}
+
+export class UpdateUserDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(200) name?: string;
+  @IsOptional() @IsEmail() @MaxLength(320) email?: string;
 }

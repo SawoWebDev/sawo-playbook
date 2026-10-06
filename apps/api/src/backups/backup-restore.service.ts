@@ -506,6 +506,13 @@ export class BackupRestorer {
       }
       try {
         const created = await this.prisma.user.create({ data: { organizationId: orgId, email: u.email, name: u.name, status: 'invited', orgRole: 'OPERATOR' } });
+        // Every non-Admin user must belong to a group: restored users join the organisation's General group.
+        const general = await this.prisma.userGroup.upsert({
+          where: { organizationId_name: { organizationId: orgId, name: 'General' } },
+          create: { organizationId: orgId, name: 'General' },
+          update: {},
+        });
+        await this.prisma.groupMember.create({ data: { groupId: general.id, userId: created.id, organizationId: orgId } });
         map.set(u.id, created.id);
         summary.usersCreated += 1;
       } catch {

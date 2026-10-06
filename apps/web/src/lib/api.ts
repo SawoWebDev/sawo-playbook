@@ -4,7 +4,11 @@
  * HttpOnly refresh cookie, then retry the original request once.
  */
 
-export type Role = 'OWNER' | 'ADMIN' | 'EDITOR' | 'APPROVER' | 'TRAINER' | 'OPERATOR';
+/**
+ * The five assignable roles, using the wire values the API returns. OPERATOR is the Viewer role.
+ * OWNER and TRAINER are legacy database values only: they are never assignable and are not part of this type.
+ */
+export type Role = 'ADMIN' | 'OPERATOR' | 'EDITOR' | 'PRE_APPROVER' | 'APPROVER';
 
 export interface SessionUser {
   id: string;
@@ -12,6 +16,20 @@ export interface SessionUser {
   email: string;
   name: string;
   role: Role;
+  /** Effective permission strings for this user, from GET /auth/me. Empty until loaded. */
+  permissions: string[];
+  /** The user's current group IDs, from GET /auth/me. */
+  groupIds: string[];
+}
+
+/** The authorisation context returned by GET /auth/me (display only; the server enforces every request). */
+export interface AuthContext {
+  permissions: string[];
+  groupIds: string[];
+}
+
+export function fetchAuthContext(): Promise<AuthContext> {
+  return api<AuthContext>('/auth/me');
 }
 
 export interface SessionResponse {

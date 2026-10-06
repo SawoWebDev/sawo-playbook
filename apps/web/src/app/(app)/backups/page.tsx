@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } fr
 import { api, ApiError, apiUpload } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, fmtDateTime } from '@/lib/format';
-import { allowed } from '@/lib/permissions';
+import { hasPermission } from '@/lib/permissions';
 
 interface RestoreSummary {
   dryRun: boolean;
@@ -91,7 +91,7 @@ function Backups() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const attachedOnce = useRef(false);
-  const isManager = allowed(user?.role, 'manageSettings');
+  const isManager = hasPermission(user, 'org.settings.manage');
 
   const loadList = useCallback(async () => {
     try {

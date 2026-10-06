@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { acceptInvite, api, type Role } from '@/lib/api';
 import { errorMessage } from '@/lib/format';
-import { ROLE_LABELS } from '@/lib/permissions';
+import { roleLabel } from '@/lib/permissions';
 
 interface InviteInfo {
   email: string;
@@ -53,7 +53,7 @@ export default function AcceptInvitePage() {
           <>
             <h1>Join {info.organizationName}</h1>
             <p className="muted">
-              You were invited as <strong>{ROLE_LABELS[info.role]}</strong> ({info.email}).
+              You were invited as <strong>{roleLabel(info.role)}</strong> ({info.email}).
             </p>
             <div className="field">
               <label htmlFor="name">Your name</label>
