@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ChecklistResult, ChecklistStatus, KanbanRevisionState, OrgRole, Prisma, UserStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { rm } from 'fs/promises';
 import { AuthUser } from '../common/auth-user';
@@ -10,12 +10,28 @@ import { PrismaService } from '../prisma/prisma.service';
 import { recomputeSopStatus } from '../sops/sop-status';
 import { sanitizeRichText } from '../sops/sanitize';
 import { StorageService } from '../storage/storage.service';
-import { BackupFolder, BackupKanban, BackupMediaEntry, BackupSop, MAX_JSON_ENTRY_BYTES } from './backup-format';
-import { BackupFormatError, parseFolders, parseKanbans, parseManifest, parseMedia, parseSop, parseUsers } from './backup-parse';
-import { BackupJob, BackupJobs, RestoreSummary } from './backup-jobs';
+import { BackupFolder, BackupGroup, BackupKanban, BackupMediaEntry, BackupSettings, BackupSop, BackupTraining, BackupUser, MAX_JSON_ENTRY_BYTES } from './backup-format';
+import { CONFIGURABLE_PERMISSIONS } from '../common/permissions';
+import { BackupFormatError, parseActivity, parseChecklists, parseFolders, parseGroups, parseKanbans, parseManifest, parseMedia, parseRevisions, parseSettings, parseSop, parseTraining, parseUsers } from './backup-parse';
+import { BackupJob, BackupJobs, RestoreExtraSummary, RestoreSummary } from './backup-jobs';
 import { ZipReader } from './zip-reader';
 
 const MAX_MEDIA_BYTES = Math.max(...Object.values(ALLOWED_UPLOADS).map((r) => r.maxBytes));
+
+const CONFIGURABLE_SET = new Set<string>(CONFIGURABLE_PERMISSIONS);
+
+const when = (v: string | null | undefined): Date | null => (v ? new Date(v) : null);
+
+const emptyExtra = (): RestoreExtraSummary => ({
+  groups: { inFile: 0, created: 0, memberships: 0 },
+  settingsApplied: false,
+  passwordAccounts: 0,
+  invitationsInFile: 0,
+  revisions: { inFile: 0, created: 0, skipped: 0 },
+  checklists: { inFile: 0, created: 0, skipped: 0 },
+  training: { trainers: 0, assessments: 0, records: 0, skipped: 0 },
+  activity: { inFile: 0, created: 0 },
+});
 
 const linkedSopIds = (s: BackupSop): string[] => [...new Set(s.versions.flatMap((v) => v.steps.map((st) => st.linkedSopId).filter((x): x is string => !!x)))];
 
@@ -92,6 +108,18 @@ export class BackupRestorer {
     const mediaIndex = parseMedia(await zip.readJson(manifest.files.media, MAX_JSON_ENTRY_BYTES));
     const mediaById = new Map(mediaIndex.map((m) => [m.id, m]));
 
+    const optionalFile = async <T>(key: string, parse: (raw: unknown) => T, fallback: T): Promise<T> => {
+      const name = (manifest.files as Record<string, unknown>)[key];
+      return typeof name === 'string' ? parse(await zip.readJson(name, MAX_JSON_ENTRY_BYTES)) : fallback;
+    };
+    const groupsFile = await optionalFile<BackupGroup[]>('groups', parseGroups, []);
+    const settingsFile = await optionalFile<BackupSettings | null>('settings', parseSettings, null);
+    const invitationsFile = await optionalFile<unknown[]>('invitations', (raw) => (Array.isArray(raw) ? raw : []), []);
+    const revisionsFile = await optionalFile('kanbanRevisions', parseRevisions, []);
+    const trainingFile = await optionalFile<BackupTraining | null>('training', parseTraining, null);
+    const checklistsFile = await optionalFile('checklists', parseChecklists, []);
+    const activityFile = await optionalFile('activity', parseActivity, []);
+
     const summary: RestoreSummary = {
       dryRun,
       sopsInFile: manifest.files.sops.length,
@@ -105,6 +133,7 @@ export class BackupRestorer {
       usersCreated: 0,
       usersMatched: 0,
       kanbans: { inFile: 0, created: 0, skipped: 0, failed: [] },
+      extra: emptyExtra(),
     };
     job.summary = summary;
 
@@ -213,14 +242,23 @@ export class BackupRestorer {
       summary.created = toCreate.length;
       summary.versions = toCreate.reduce((n, s) => n + s.versions.length, 0);
       summary.steps = toCreate.reduce((n, s) => n + s.versions.reduce((m, v) => m + v.steps.length, 0), 0);
+      summary.extra.groups.inFile = groupsFile.length;
+      summary.extra.invitationsInFile = invitationsFile.length;
+      summary.extra.revisions.inFile = revisionsFile.length;
+      summary.extra.checklists.inFile = checklistsFile.length;
+      summary.extra.activity.inFile = activityFile.length;
+      summary.extra.training = { trainers: trainingFile?.trainerAssignments.length ?? 0, assessments: trainingFile?.skillAssessments.length ?? 0, records: trainingFile?.skillRecords.length ?? 0, skipped: 0 };
+      summary.extra.passwordAccounts = users.filter((u) => !!u.passwordHash).length;
       return;
     }
 
-    // ── people & folders ──
+    // ── people, groups, settings & folders ──
     job.phase = 'restoring';
-    job.current = 'Matching people and folders';
-    const userMap = await this.resolveUsers(orgId, actor, users, summary, job);
+    job.current = 'Matching people and groups';
+    const { userMap, created: createdUsers } = await this.resolveUsers(orgId, actor, users, summary, job);
     const uid = (old: string | null | undefined): string => (old ? userMap.get(old) ?? actor.id : actor.id);
+    const groupMap = await this.restoreGroups(orgId, groupsFile, userMap, createdUsers, summary);
+    await this.applySettings(orgId, settingsFile, summary);
     const folderMap = await this.resolveFolders(orgId, actor, folders, summary);
 
     // ── ids up front so links between SOPs can be remapped ──
@@ -230,6 +268,8 @@ export class BackupRestorer {
     const takenTokens = new Set(
       (await this.prisma.sop.findMany({ where: { qrPublicToken: { in: ordered.map((s) => s.qrPublicToken).filter(Boolean) } }, select: { qrPublicToken: true } })).map((t) => t.qrPublicToken),
     );
+    const stepIdMap = new Map<string, string>(); // backup step id -> restored step id
+    const kanbanIdMap = new Map<string, string>(); // backup kanban id -> restored kanban id
     const createdSops = new Set<string>(); // backup ids already written
     const createdVersions = new Set<string>();
     const assetMap = new Map<string, string>();
@@ -292,6 +332,7 @@ export class BackupRestorer {
           return null;
         };
         const counts = { versions: 0, steps: 0 };
+        const stepsThisSop = new Map<string, string>();
         await this.prisma.$transaction(
           async (tx) => {
             await tx.sop.create({
@@ -327,6 +368,7 @@ export class BackupRestorer {
                 },
               });
               const stepRows = v.steps.map((s) => ({ s, id: randomUUID() }));
+              for (const { s, id } of stepRows) stepsThisSop.set(s.id, id);
               if (stepRows.length) {
                 await tx.sopStep.createMany({
                   data: stepRows.map(({ s, id }) => ({
@@ -394,6 +436,7 @@ export class BackupRestorer {
           },
           { timeout: 120_000, maxWait: 15_000 },
         );
+        for (const [old, fresh] of stepsThisSop) stepIdMap.set(old, fresh);
         createdSops.add(sop.id);
         for (const v of sop.versions) createdVersions.add(v.id);
         summary.created += 1;
@@ -436,7 +479,7 @@ export class BackupRestorer {
         }
         const picture = k.pictureAssetId ? assetMap.get(k.pictureAssetId) ?? null : null;
         const extra = [...new Set(k.mediaAssetIds.map((m) => assetMap.get(m)).filter((x): x is string => !!x))];
-        await this.prisma.$transaction(async (tx) => {
+        const newKanbanId = await this.prisma.$transaction(async (tx) => {
           const row = await tx.kanban.create({
             data: {
               organizationId: orgId,
@@ -468,7 +511,9 @@ export class BackupRestorer {
             },
           });
           if (extra.length) await tx.kanbanMedia.createMany({ data: extra.map((mediaAssetId) => ({ kanbanId: row.id, mediaAssetId })) });
+          return row.id;
         });
+        kanbanIdMap.set(k.id, newKanbanId);
         summary.kanbans.created += 1;
       } catch (e) {
         summary.kanbans.failed.push({ partCode: k.partCode, error: e instanceof Error ? e.message.split('\n').filter(Boolean).pop() ?? 'failed' : String(e) });
@@ -476,6 +521,162 @@ export class BackupRestorer {
       job.done.kanbans += 1;
       this.jobs.setPercent(job);
     }
+
+    // ── kanban proposals (open and past change requests) ──
+    job.phase = 'restoring';
+    job.current = 'Restoring kanban proposals';
+    for (const r of revisionsFile) {
+      job.current = `Kanban proposal ${r.id.slice(0, 8)}`;
+      try {
+        const kanbanId = r.kanbanId ? kanbanIdMap.get(r.kanbanId) ?? null : null;
+        if (r.kanbanId && !kanbanId) {
+          summary.extra.revisions.skipped += 1;
+          continue;
+        }
+        const payload: Record<string, unknown> = { ...r.payload };
+        if (typeof payload.pictureAssetId === 'string') {
+          await ensureAsset(payload.pictureAssetId);
+          payload.pictureAssetId = assetMap.get(payload.pictureAssetId) ?? null;
+        }
+        if (Array.isArray(payload.mediaAssetIds)) {
+          const ids = payload.mediaAssetIds.filter((m): m is string => typeof m === 'string');
+          for (const m of ids) await ensureAsset(m);
+          payload.mediaAssetIds = [...new Set(ids.map((m) => assetMap.get(m)).filter((x): x is string => !!x))];
+        }
+        await this.prisma.kanbanRevision.create({
+          data: {
+            organizationId: orgId,
+            kanbanId,
+            state: r.state as KanbanRevisionState,
+            payload: payload as Prisma.InputJsonValue,
+            routingGroupIds: r.routingGroupIds.map((g) => groupMap.get(g)).filter((g): g is string => !!g),
+            createdById: uid(r.createdById),
+            updatedById: uid(r.updatedById),
+            submittedById: r.submittedById ? uid(r.submittedById) : null,
+            submittedAt: when(r.submittedAt),
+            preApprovedById: r.preApprovedById ? uid(r.preApprovedById) : null,
+            preApprovedAt: when(r.preApprovedAt),
+            approvedById: r.approvedById ? uid(r.approvedById) : null,
+            approvedAt: when(r.approvedAt),
+            publishedById: r.publishedById ? uid(r.publishedById) : null,
+            publishedAt: when(r.publishedAt),
+            lastComment: r.lastComment,
+            lastCommentById: r.lastCommentById ? uid(r.lastCommentById) : null,
+            createdAt: new Date(r.createdAt),
+            updatedAt: new Date(r.updatedAt),
+          },
+        });
+        summary.extra.revisions.created += 1;
+      } catch (e) {
+        summary.extra.revisions.skipped += 1;
+        this.jobs.warn(job, `A kanban proposal was not restored: ${e instanceof Error ? e.message.split('\n').filter(Boolean).pop() : String(e)}`);
+      }
+    }
+    summary.extra.revisions.inFile = revisionsFile.length;
+
+    // ── checklists: submissions of the SOP versions restored above ──
+    for (const sub of checklistsFile) {
+      const versionId = createdVersions.has(sub.sopVersionId) ? versionIdMap.get(sub.sopVersionId) : undefined;
+      if (!versionId) {
+        summary.extra.checklists.skipped += 1;
+        continue;
+      }
+      try {
+        const responses: { stepId: string; value: string | null; result: ChecklistResult | null; comment: string | null; mediaAssetId: string | null; recordedAt: Date }[] = [];
+        for (const r of sub.responses) {
+          const stepId = stepIdMap.get(r.stepId);
+          if (!stepId) continue;
+          let mediaAssetId: string | null = null;
+          if (r.mediaAssetId) {
+            await ensureAsset(r.mediaAssetId);
+            mediaAssetId = assetMap.get(r.mediaAssetId) ?? null;
+          }
+          responses.push({ stepId, value: r.value, result: r.result as ChecklistResult | null, comment: r.comment, mediaAssetId, recordedAt: new Date(r.recordedAt) });
+        }
+        await this.prisma.checklistSubmission.create({
+          data: {
+            organizationId: orgId,
+            sopVersionId: versionId,
+            operatorId: uid(sub.operatorId),
+            startedAt: new Date(sub.startedAt),
+            completedAt: when(sub.completedAt),
+            status: sub.status as ChecklistStatus,
+            responses: { create: responses },
+          },
+        });
+        summary.extra.checklists.created += 1;
+      } catch (e) {
+        summary.extra.checklists.skipped += 1;
+        this.jobs.warn(job, `A checklist submission was not restored: ${e instanceof Error ? e.message.split('\n').filter(Boolean).pop() : String(e)}`);
+      }
+    }
+    summary.extra.checklists.inFile = checklistsFile.length;
+
+    // ── training: trainers, assessments and current skill levels of the SOPs restored above ──
+    if (trainingFile) {
+      const trainerRows = trainingFile.trainerAssignments.flatMap((t) => {
+        const trainerId = userMap.get(t.trainerId);
+        const associateId = userMap.get(t.associateId);
+        return trainerId && associateId ? [{ organizationId: orgId, trainerId, associateId, assignedById: uid(t.assignedById), createdAt: new Date(t.createdAt) }] : [];
+      });
+      const assessmentIdMap = new Map<string, string>(); // backup assessment id -> restored id
+      const assessmentRows = trainingFile.skillAssessments.flatMap((a) => {
+        const sopId = createdSops.has(a.sopId) ? sopIdMap.get(a.sopId) : undefined;
+        const sopVersionId = createdVersions.has(a.sopVersionId) ? versionIdMap.get(a.sopVersionId) : undefined;
+        const associateId = userMap.get(a.associateId);
+        const trainerId = userMap.get(a.trainerId);
+        if (!sopId || !sopVersionId || !associateId || !trainerId) return [];
+        const newId = randomUUID();
+        assessmentIdMap.set(a.id, newId);
+        return [{ id: newId, organizationId: orgId, associateId, sopId, sopVersionId, level: a.level, trainerId, assessedAt: new Date(a.assessedAt), notes: a.notes }];
+      });
+      const recordRows = trainingFile.skillRecords.flatMap((r) => {
+        const sopId = createdSops.has(r.sopId) ? sopIdMap.get(r.sopId) : undefined;
+        const currentSopVersionId = createdVersions.has(r.currentSopVersionId) ? versionIdMap.get(r.currentSopVersionId) : undefined;
+        const associateId = userMap.get(r.associateId);
+        const lastAssessmentId = assessmentIdMap.get(r.lastAssessmentId);
+        if (!sopId || !currentSopVersionId || !associateId || !lastAssessmentId) return [];
+        return [{ organizationId: orgId, associateId, sopId, currentLevel: r.currentLevel, currentSopVersionId, lastAssessmentId, updatedAt: new Date(r.updatedAt) }];
+      });
+      const trainers = await this.prisma.trainerAssignment.createMany({ data: trainerRows, skipDuplicates: true });
+      await this.prisma.skillAssessment.createMany({ data: assessmentRows });
+      const records = await this.prisma.skillRecord.createMany({ data: recordRows, skipDuplicates: true });
+      summary.extra.training = {
+        trainers: trainers.count,
+        assessments: assessmentRows.length,
+        records: records.count,
+        skipped: trainingFile.trainerAssignments.length - trainerRows.length + (trainingFile.skillAssessments.length - assessmentRows.length) + (trainingFile.skillRecords.length - recordRows.length),
+      };
+    }
+
+    // ── activity events: restored as new rows; references are remapped where the target was restored ──
+    const mapEntity = (type: string | null, old: string | null): string | null => {
+      if (!old) return null;
+      if (type === 'sop') return sopIdMap.get(old) ?? existingSopIdFor.get(old) ?? old;
+      if (type === 'kanban') return kanbanIdMap.get(old) ?? old;
+      if (type === 'user') return userMap.get(old) ?? old;
+      if (type === 'folder') return folderMap.get(old) ?? old;
+      if (type === 'group') return groupMap.get(old) ?? old;
+      return old;
+    };
+    for (let i = 0; i < activityFile.length; i += 1000) {
+      const chunk = activityFile.slice(i, i + 1000);
+      const written = await this.prisma.activityEvent.createMany({
+        data: chunk.map((e) => ({
+          id: randomUUID(), // new id: the source row may still exist on the same server
+          organizationId: orgId,
+          actorId: e.actorId ? userMap.get(e.actorId) ?? null : null,
+          eventType: e.eventType,
+          entityType: e.entityType,
+          entityId: mapEntity(e.entityType, e.entityId),
+          metadata: (e.metadata ?? {}) as Prisma.InputJsonValue,
+          occurredAt: new Date(e.occurredAt),
+        })),
+        skipDuplicates: true,
+      });
+      summary.extra.activity.created += written.count;
+    }
+    summary.extra.activity.inFile = activityFile.length;
 
     await this.audit.record({
       action: AuditAction.BackupRestored,
@@ -487,16 +688,21 @@ export class BackupRestorer {
     });
   }
 
-  /** People in the file are matched to existing users by email; unknown ones become attribution-only placeholders (invited, lowest role, no password). */
-  private async resolveUsers(orgId: string, actor: AuthUser, users: { id: string; name: string; email: string }[], summary: RestoreSummary, job: BackupJob): Promise<Map<string, string>> {
-    const map = new Map<string, string>();
+  /**
+   * People in the file are matched to existing users by email. Unknown ones are created with the role, status, special access
+   * and sign-in password they had on the source server. A file without those fields (format 1) gives an attribution-only
+   * placeholder: invited, lowest role, no password. Returns the new id for each file id, and the role of each account created.
+   */
+  private async resolveUsers(orgId: string, actor: AuthUser, users: BackupUser[], summary: RestoreSummary, job: BackupJob): Promise<{ userMap: Map<string, string>; created: Map<string, string> }> {
+    const userMap = new Map<string, string>();
+    const created = new Map<string, string>();
     const inOrg = new Map((await this.prisma.user.findMany({ where: { organizationId: orgId }, select: { id: true, email: true } })).map((u) => [u.email.toLowerCase(), u.id]));
     const unmatched = users.filter((u) => !inOrg.has(u.email.toLowerCase()));
     const elsewhere = new Set((await this.prisma.user.findMany({ where: { email: { in: unmatched.map((u) => u.email) } }, select: { email: true } })).map((u) => u.email.toLowerCase()));
     for (const u of users) {
       const have = inOrg.get(u.email.toLowerCase());
       if (have) {
-        map.set(u.id, have);
+        userMap.set(u.id, have);
         summary.usersMatched += 1;
         continue;
       }
@@ -504,22 +710,85 @@ export class BackupRestorer {
         this.jobs.warn(job, `${u.name} <${u.email}> belongs to another organization, so their SOPs are attributed to you instead`);
         continue;
       }
+      // OWNER is the legacy form of Admin. Only the Owner may create Admin accounts from a file, as with invitations.
+      let role = u.orgRole === 'OWNER' ? 'ADMIN' : u.orgRole ?? 'OPERATOR';
+      if (role === 'ADMIN' && actor.role !== 'OWNER') {
+        role = 'OPERATOR';
+        this.jobs.warn(job, `${u.name} <${u.email}> was restored as Viewer: only the Owner can restore Admin accounts`);
+      }
       try {
-        const created = await this.prisma.user.create({ data: { organizationId: orgId, email: u.email, name: u.name, status: 'invited', orgRole: 'OPERATOR' } });
-        // Every non-Admin user must belong to a group: restored users join the organisation's General group.
-        const general = await this.prisma.userGroup.upsert({
-          where: { organizationId_name: { organizationId: orgId, name: 'General' } },
-          create: { organizationId: orgId, name: 'General' },
-          update: {},
+        const person = await this.prisma.user.create({
+          data: {
+            organizationId: orgId,
+            email: u.email,
+            name: u.name,
+            orgRole: role as OrgRole,
+            status: (u.status ?? 'invited') as UserStatus,
+            extraPermissions: (u.extraPermissions ?? []).filter((p) => CONFIGURABLE_SET.has(p)),
+            passwordHash: u.passwordHash ?? null,
+            passwordMustChange: false,
+            mfaEnabled: false, // two-factor secrets never leave the source server: each person sets it up again
+            lastLoginAt: when(u.lastLoginAt),
+            ...(u.createdAt ? { createdAt: new Date(u.createdAt) } : {}),
+          },
         });
-        await this.prisma.groupMember.create({ data: { groupId: general.id, userId: created.id, organizationId: orgId } });
-        map.set(u.id, created.id);
+        userMap.set(u.id, person.id);
+        created.set(person.id, role);
         summary.usersCreated += 1;
+        if (u.passwordHash) summary.extra.passwordAccounts += 1;
       } catch {
         this.jobs.warn(job, `${u.name} <${u.email}> could not be created, so their SOPs are attributed to ${actor.name}`);
       }
     }
-    return map;
+    return { userMap, created };
+  }
+
+  /**
+   * Groups and their members, matched by name. A non-Admin account left without any group joins General, the rule
+   * invitations follow. Returns the restored id for each group in the file.
+   */
+  private async restoreGroups(orgId: string, groups: BackupGroup[], userMap: Map<string, string>, created: Map<string, string>, summary: RestoreSummary): Promise<Map<string, string>> {
+    const groupMap = new Map<string, string>();
+    const withGroup = new Set<string>();
+    summary.extra.groups.inFile = groups.length;
+    for (const g of groups) {
+      let row = await this.prisma.userGroup.findUnique({ where: { organizationId_name: { organizationId: orgId, name: g.name } }, select: { id: true } });
+      if (!row) {
+        row = await this.prisma.userGroup.create({ data: { organizationId: orgId, name: g.name, createdAt: new Date(g.createdAt) }, select: { id: true } });
+        summary.extra.groups.created += 1;
+      }
+      const groupId = row.id;
+      groupMap.set(g.id, groupId);
+      const members = g.memberIds.map((m) => userMap.get(m)).filter((u): u is string => !!u);
+      if (members.length) {
+        const written = await this.prisma.groupMember.createMany({ data: members.map((userId) => ({ groupId, userId, organizationId: orgId })), skipDuplicates: true });
+        summary.extra.groups.memberships += written.count;
+        for (const m of members) withGroup.add(m);
+      }
+    }
+    const orphans = [...created].filter(([id, role]) => role !== 'ADMIN' && !withGroup.has(id)).map(([id]) => id);
+    if (orphans.length) {
+      const general = await this.prisma.userGroup.upsert({ where: { organizationId_name: { organizationId: orgId, name: 'General' } }, create: { organizationId: orgId, name: 'General' }, update: {} });
+      const written = await this.prisma.groupMember.createMany({ data: orphans.map((userId) => ({ groupId: general.id, userId, organizationId: orgId })), skipDuplicates: true });
+      summary.extra.groups.memberships += written.count;
+    }
+    return groupMap;
+  }
+
+  /** The organisation settings in the file replace this organisation's. A file without settings leaves them as they are. */
+  private async applySettings(orgId: string, s: BackupSettings | null, summary: RestoreSummary): Promise<void> {
+    if (!s) return;
+    const json = (v: unknown) => (v === null || v === undefined ? Prisma.DbNull : (v as Prisma.InputJsonValue));
+    const data = {
+      approvalRequired: s.approvalRequired,
+      approvalQuorum: s.approvalQuorum,
+      allowSelfApproval: s.allowSelfApproval,
+      publicSopViewing: s.publicSopViewing,
+      rolePermissions: json(s.rolePermissions),
+      navConfig: json(s.navConfig),
+    };
+    await this.prisma.organizationSettings.upsert({ where: { organizationId: orgId }, create: { organizationId: orgId, ...data }, update: data });
+    summary.extra.settingsApplied = true;
   }
 
   /** Folders are matched by name under the same parent; missing ones are created. */

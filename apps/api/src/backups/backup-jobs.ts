@@ -2,10 +2,25 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { join } from 'path';
+import type { BackupSection } from './backup-format';
 
 export type JobKind = 'export' | 'restore';
 export type JobStatus = 'running' | 'done' | 'failed';
 export type JobPhase = 'preparing' | 'sops' | 'kanbans' | 'media' | 'finalizing' | 'validating' | 'restoring' | 'done';
+
+/** Counts for the sections a format 2 backup adds. A dry run fills in the counts found in the file. */
+export interface RestoreExtraSummary {
+  groups: { inFile: number; created: number; memberships: number };
+  settingsApplied: boolean;
+  /** Accounts restored with the sign-in password they had on the source server. */
+  passwordAccounts: number;
+  /** Pending invitations in the file. Their links cannot be restored, so an Admin sends them again. */
+  invitationsInFile: number;
+  revisions: { inFile: number; created: number; skipped: number };
+  checklists: { inFile: number; created: number; skipped: number };
+  training: { trainers: number; assessments: number; records: number; skipped: number };
+  activity: { inFile: number; created: number };
+}
 
 export interface RestoreSummary {
   dryRun: boolean;
@@ -20,6 +35,7 @@ export interface RestoreSummary {
   usersCreated: number;
   usersMatched: number;
   kanbans: { inFile: number; created: number; skipped: number; failed: { partCode: string; error: string }[] };
+  extra: RestoreExtraSummary;
 }
 
 export interface BackupJob {
@@ -49,6 +65,10 @@ export interface BackupJob {
   summary: RestoreSummary | null;
   /** Source file name for a restore. */
   sourceName: string | null;
+  /** Export: the sections this backup includes. Empty for a restore. */
+  sections: BackupSection[];
+  /** Export: whether sign-in password hashes are written (one-time transfer only). */
+  includePasswords: boolean;
 }
 
 const MAX_WARNINGS = 200;
@@ -74,7 +94,7 @@ function metaPath(organizationId: string, id: string): string {
 export class BackupJobs {
   private readonly jobs = new Map<string, BackupJob>();
 
-  create(input: { kind: JobKind; organizationId: string; startedById: string; startedByName: string; dryRun?: boolean; sourceName?: string }): BackupJob {
+  create(input: { kind: JobKind; organizationId: string; startedById: string; startedByName: string; dryRun?: boolean; sourceName?: string; sections?: BackupSection[]; includePasswords?: boolean }): BackupJob {
     const job: BackupJob = {
       id: randomUUID(),
       kind: input.kind,
@@ -96,6 +116,8 @@ export class BackupJobs {
       file: null,
       summary: null,
       sourceName: input.sourceName ?? null,
+      sections: input.sections ?? [],
+      includePasswords: !!input.includePasswords,
     };
     this.jobs.set(job.id, job);
     return job;

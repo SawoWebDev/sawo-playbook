@@ -11,6 +11,8 @@ export interface UserRow {
   createdAt: string;
   mfaEnabled: boolean;
   groups: { id: string; name: string }[];
+  /** Permissions granted to this person on top of their role. */
+  extraPermissions: string[];
   /** Server-computed approval readiness (same result on the list and the detail). */
   approvalReadiness: { ready: boolean; issue: string | null };
 }

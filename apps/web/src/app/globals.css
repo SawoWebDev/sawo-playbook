@@ -693,6 +693,9 @@ label { display: block; font-weight: 500; margin-bottom: 4px; }
 .rl-perm { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 4px; margin: 0; font-weight: 500; font-size: 13px; border-radius: 6px; cursor: pointer; }
 .rl-perm:hover { background: #f6efe7; }
 .rl-perm.is-changed span { color: #8c5e38; font-weight: 700; }
+/* A permission granted to this person on top of their role. */
+.rl-perm.is-extra { background: #eef6ec; }
+.rl-perm.is-extra:hover { background: #e2f0de; }
 .rl-perm.is-changed span::after { content: ' \2022'; color: #c0392b; }
 
 .rl-switch { appearance: none; -webkit-appearance: none; flex-shrink: 0; width: 34px !important; height: 20px; padding: 0; margin: 0; border: 0; border-radius: 999px; background: #d9d1c8; position: relative; cursor: pointer; transition: background .18s; }

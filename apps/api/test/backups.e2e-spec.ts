@@ -11,7 +11,7 @@ import request from 'supertest';
 import { OrgRole } from '@prisma/client';
 import { ZipReader } from '../src/backups/zip-reader';
 import { StorageService } from '../src/storage/storage.service';
-import { createTenant, createTestApp, resetDatabase, Tenant, TestContext } from './harness';
+import { createTenant, createTestApp, resetDatabase, Tenant, TestContext, TEST_PASSWORD } from './harness';
 import { PNG_1PX, sopHelpers } from './sop-helpers';
 
 let ctx: TestContext;
@@ -52,8 +52,8 @@ async function waitForJob(t: Tenant, id: string, role: OrgRole = 'OWNER') {
   throw new Error('backup job did not finish');
 }
 
-async function exportBackup(t: Tenant): Promise<{ job: any; zip: Buffer }> {
-  const start = await ctx.http().post('/api/backups').set(as(t, 'OWNER')).expect(202);
+async function exportBackup(t: Tenant, body: { sections?: string[]; includePasswords?: boolean } = {}): Promise<{ job: any; zip: Buffer }> {
+  const start = await ctx.http().post('/api/backups').set(as(t, 'OWNER')).send(body).expect(202);
   const job = await waitForJob(t, start.body.id);
   expect(job.status).toBe('done');
   const link = await ctx.http().post(`/api/backups/${job.id}/download-link`).set(as(t, 'OWNER')).expect(200);
@@ -258,7 +258,7 @@ describe('backup & restore', () => {
 
     const zip = await openZip(source.zip);
     const manifest = await zip.readJson<any>('manifest.json', 1e6);
-    expect(manifest).toMatchObject({ format: 'gembadocs-sop-backup', formatVersion: 1, counts: { sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3 }, files: { kanbans: 'kanbans.json' } });
+    expect(manifest).toMatchObject({ format: 'gembadocs-sop-backup', formatVersion: 2, counts: { sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3 }, files: { kanbans: 'kanbans.json' } });
     expect(manifest.files.sops).toHaveLength(4);
     const media = await zip.readJson<any[]>('media.json', 1e6);
     expect(media.map((m) => m.originalFilename).sort()).toEqual(['one.png', 'three.png', 'two.png']);
@@ -335,7 +335,8 @@ describe('backup & restore', () => {
     const c = await createTenant(ctx, 'delta');
     const tampered = await rewrite(source.zip, (files) => {
       const users = JSON.parse(files.get('users.json')!.toString()) as { id: string; name: string; email: string }[];
-      files.set('users.json', Buffer.from(JSON.stringify(users.map((u) => ({ ...u, email: `restored.${u.id}@example.test` })))));
+      // Only the fields a format 1 file had: the people come back as attribution-only placeholders.
+      files.set('users.json', Buffer.from(JSON.stringify(users.map((u) => ({ id: u.id, name: u.name, email: `restored.${u.id}@example.test` })))));
     });
     const job = await restore(c, tampered, false);
     expect(job.status).toBe('done');
@@ -345,6 +346,20 @@ describe('backup & restore', () => {
     const sop = await ctx.prisma.sop.findFirstOrThrow({ where: { organizationId: c.organizationId, name: 'Alpha' } });
     const creator = await ctx.prisma.user.findUniqueOrThrow({ where: { id: sop.createdById } });
     expect(creator.email).toMatch(/^restored\./);
+  });
+
+  it('a restore by someone other than the Owner never creates Admin accounts', async () => {
+    const d = await createTenant(ctx, 'echo');
+    const tampered = await rewrite(source.zip, (files) => {
+      const users = JSON.parse(files.get('users.json')!.toString()) as { id: string; name: string; email: string }[];
+      files.set('users.json', Buffer.from(JSON.stringify(users.map((u) => ({ ...u, orgRole: 'ADMIN', email: `admin.${u.id}@example.test` })))));
+    });
+    const start = await ctx.http().post('/api/backups/restore').set(as(d, 'ADMIN')).attach('file', tampered, { filename: 'backup.zip', contentType: 'application/zip' }).expect(202);
+    const job = await waitForJob(d, start.body.id);
+    expect(job.status).toBe('done');
+    const created = await ctx.prisma.user.findMany({ where: { organizationId: d.organizationId, email: { startsWith: 'admin.' } } });
+    expect(created.length).toBeGreaterThan(0);
+    expect(created.every((u) => u.orgRole === 'OPERATOR')).toBe(true);
   });
 
   it('treats the file as untrusted: sanitises text, drops damaged images, reports unreadable SOPs', async () => {
@@ -409,5 +424,168 @@ describe('backup & restore', () => {
     expect(list.body.some((j: request.Response['body']) => j.id === source.job.id && j.file.sizeBytes > 0)).toBe(true);
     await ctx.http().delete(`/api/backups/${source.job.id}`).set(as(a, 'OWNER')).expect(204);
     await ctx.http().get(`/api/backups/${source.job.id}`).set(as(a, 'OWNER')).expect(404);
+  });
+});
+
+describe('backup sections', () => {
+  // Uses the organisation exported by the 'backup & restore' suite above (same database, same tenant).
+  const ALL_SECTIONS = ['sops', 'kanbans', 'people', 'settings', 'training', 'checklists', 'activity'];
+  const SECTION_FILES = ['settings.json', 'groups.json', 'invitations.json', 'kanban-revisions.json', 'training.json', 'checklists.json', 'activity.json'];
+
+  it('a full backup is the default and carries every section, with people, roles and special access', async () => {
+    const full = await exportBackup(a);
+    expect(full.job.sections).toEqual(ALL_SECTIONS);
+    const zip = await openZip(full.zip);
+    const manifest = await zip.readJson<any>('manifest.json', 1e6);
+    expect(manifest).toMatchObject({ formatVersion: 2, sections: ALL_SECTIONS });
+    for (const name of SECTION_FILES) expect(zip.entries.has(name)).toBe(true);
+
+    const users = await zip.readJson<any[]>('users.json', 1e7);
+    const admin = users.find((u) => u.id === a.users.ADMIN.user.id);
+    expect(admin).toMatchObject({ orgRole: 'ADMIN', status: 'active', extraPermissions: expect.any(Array) });
+    expect(users.every((u) => Array.isArray(u.extraPermissions))).toBe(true);
+
+    // Nothing that can sign someone in is written: no password hashes, two-factor secrets or token hashes.
+    for (const name of zip.entries.keys()) {
+      if (!name.endsWith('.json')) continue;
+      const text = (await zip.read(name, 1e8)).toString('utf8');
+      for (const secret of ['"passwordHash"', '"mfaSecretEnc"', '"mfaPendingSecretEnc"', '"tokenHash"']) expect(text).not.toContain(secret);
+    }
+    zip.close();
+  });
+
+  it('choosing only SOPs and kanbans leaves out people, settings, training, checklists and activity', async () => {
+    const partial = await exportBackup(a, { sections: ['sops', 'kanbans'] });
+    expect(partial.job.sections).toEqual(['sops', 'kanbans']);
+    const zip = await openZip(partial.zip);
+    const manifest = await zip.readJson<any>('manifest.json', 1e6);
+    expect(manifest.sections).toEqual(['sops', 'kanbans']);
+    expect(manifest.files.sops).toHaveLength(4);
+    expect(zip.entries.has('kanbans.json')).toBe(true);
+    expect(zip.entries.has('kanban-revisions.json')).toBe(true);
+    for (const name of ['settings.json', 'groups.json', 'invitations.json', 'training.json', 'checklists.json', 'activity.json']) {
+      expect(zip.entries.has(name)).toBe(false);
+    }
+    zip.close();
+  });
+
+  it('passwords are written only when asked for, with the People section, and warned about', async () => {
+    const withPw = await exportBackup(a, { sections: ['people'], includePasswords: true } as any);
+    expect(withPw.job.warnings.join(' ')).toContain('password hashes');
+    const zipWith = await openZip(withPw.zip);
+    const usersWith = await zipWith.readJson<any[]>('users.json', 1e7);
+    expect(usersWith.find((u) => u.id === a.users.ADMIN.user.id).passwordHash).toMatch(/^\$argon2/);
+    expect((await zipWith.readJson<any>('manifest.json', 1e6)).passwords).toBe(true);
+    zipWith.close();
+
+    const without = await exportBackup(a, { sections: ['people'] });
+    const zipWithout = await openZip(without.zip);
+    const usersWithout = await zipWithout.readJson<any[]>('users.json', 1e7);
+    expect(usersWithout.every((u) => !('passwordHash' in u))).toBe(true);
+    zipWithout.close();
+
+    await ctx.http().post('/api/backups').set(as(a, 'OWNER')).send({ sections: ['sops'], includePasswords: true }).expect(400);
+  });
+
+  it('refuses an empty selection and an unknown section', async () => {
+    await ctx.http().post('/api/backups').set(as(a, 'OWNER')).send({ sections: [] }).expect(400);
+    await ctx.http().post('/api/backups').set(as(a, 'OWNER')).send({ sections: ['sops', 'passwords'] }).expect(400);
+  });
+});
+
+describe('transfer: a full backup restored on another server', () => {
+  it('brings back people who can sign in, their roles and special access, groups, settings, SOPs and kanbans', async () => {
+    await ctx.http().patch(`/api/users/${a.users.EDITOR.user.id}/permissions`).set(as(a, 'ADMIN')).send({ permissions: ['kanban.publish'] }).expect(200);
+    await ctx.prisma.organizationSettings.upsert({
+      where: { organizationId: a.organizationId },
+      create: { organizationId: a.organizationId, approvalQuorum: 5 },
+      update: { approvalQuorum: 5 },
+    });
+    // Checklist answers and training records, so the transfer covers those sections too.
+    const alphaVersion = await ctx.prisma.sopVersion.findFirstOrThrow({ where: { sop: { organizationId: a.organizationId, name: 'Alpha' }, lifecycleState: 'PUBLISHED' } });
+    const alphaSteps = await ctx.prisma.sopStep.findMany({ where: { sopVersionId: alphaVersion.id }, orderBy: { order: 'asc' } });
+    await ctx.prisma.checklistSubmission.create({
+      data: {
+        organizationId: a.organizationId,
+        sopVersionId: alphaVersion.id,
+        operatorId: a.users.OPERATOR.user.id,
+        status: 'completed',
+        completedAt: new Date('2025-06-01T10:00:00Z'),
+        responses: { create: alphaSteps.map((st) => ({ stepId: st.id, result: 'ok', value: 'fine' })) },
+      },
+    });
+    const assessment = await ctx.prisma.skillAssessment.create({
+      data: { organizationId: a.organizationId, associateId: a.users.OPERATOR.user.id, sopId: alphaVersion.sopId, sopVersionId: alphaVersion.id, level: 3, trainerId: a.users.EDITOR.user.id, notes: 'signed off' },
+    });
+    await ctx.prisma.skillRecord.create({
+      data: { organizationId: a.organizationId, associateId: a.users.OPERATOR.user.id, sopId: alphaVersion.sopId, currentLevel: 3, currentSopVersionId: alphaVersion.id, lastAssessmentId: assessment.id },
+    });
+    await ctx.prisma.trainerAssignment.create({
+      data: { organizationId: a.organizationId, trainerId: a.users.EDITOR.user.id, associateId: a.users.OPERATOR.user.id, assignedById: a.users.ADMIN.user.id },
+    });
+    const sourceChecklists = await ctx.prisma.checklistSubmission.count({ where: { organizationId: a.organizationId } });
+    const sourceAssessments = await ctx.prisma.skillAssessment.count({ where: { organizationId: a.organizationId } });
+    const sourceRecords = await ctx.prisma.skillRecord.count({ where: { organizationId: a.organizationId } });
+    const sourceTrainers = await ctx.prisma.trainerAssignment.count({ where: { organizationId: a.organizationId } });
+    expect(sourceChecklists).toBeGreaterThan(0);
+
+    const sourceUsers = await ctx.prisma.user.findMany({ where: { organizationId: a.organizationId }, select: { id: true, email: true, orgRole: true } });
+    const sourceGroups = (await ctx.prisma.userGroup.findMany({ where: { organizationId: a.organizationId }, select: { name: true } })).map((g) => g.name).sort();
+    const sourceSops = await ctx.prisma.sop.count({ where: { organizationId: a.organizationId, deletedAt: null } });
+    const sourceKanbans = await ctx.prisma.kanban.count({ where: { organizationId: a.organizationId, deletedAt: null } });
+
+    const sourceRevisions = await ctx.prisma.kanbanRevision.count({ where: { organizationId: a.organizationId } });
+    const sourceActivity = await ctx.prisma.activityEvent.count({ where: { organizationId: a.organizationId } });
+    const full = await exportBackup(a, { includePasswords: true });
+
+    // The same addresses cannot exist twice, so free them here, as they would be on a different server.
+    for (const u of sourceUsers) await ctx.prisma.user.update({ where: { id: u.id }, data: { email: `retired-${u.id}@old.test` } });
+    const target = await createTenant(ctx, 'transfer');
+
+    const run = await restore(target, full.zip, false);
+    expect(run.status).toBe('done');
+    expect(run.summary.failed).toEqual([]);
+    expect(run.summary.created).toBe(sourceSops);
+    expect(run.summary.kanbans.created).toBe(sourceKanbans);
+    expect(run.summary.extra).toMatchObject({ settingsApplied: true });
+    expect(run.summary.extra.passwordAccounts).toBeGreaterThan(0);
+    // Everything in the file came back: every kanban proposal, activity event and group membership.
+    expect(run.summary.extra.revisions).toEqual({ inFile: sourceRevisions, created: sourceRevisions, skipped: 0 });
+    expect(run.summary.extra.activity).toEqual({ inFile: sourceActivity, created: sourceActivity });
+    expect(run.summary.extra.groups.memberships).toBeGreaterThan(0);
+    expect(run.summary.extra.checklists).toEqual({ inFile: sourceChecklists, created: sourceChecklists, skipped: 0 });
+    expect(run.summary.extra.training).toEqual({ trainers: sourceTrainers, assessments: sourceAssessments, records: sourceRecords, skipped: 0 });
+    const restoredSubmission = await ctx.prisma.checklistSubmission.findFirst({ where: { organizationId: target.organizationId }, include: { responses: true } });
+    expect(restoredSubmission?.responses.length).toBe(alphaSteps.length);
+
+    const originalEmail = (id: string) => sourceUsers.find((u) => u.id === id)!.email;
+    const restoredAdmin = await ctx.prisma.user.findFirst({ where: { organizationId: target.organizationId, email: originalEmail(a.users.ADMIN.user.id) } });
+    expect(restoredAdmin).toMatchObject({ orgRole: 'ADMIN', status: 'active' });
+    const restoredEditor = await ctx.prisma.user.findFirst({ where: { organizationId: target.organizationId, email: originalEmail(a.users.EDITOR.user.id) } });
+    expect(restoredEditor).toMatchObject({ orgRole: 'EDITOR', extraPermissions: ['kanban.publish'] });
+
+    // The restored account signs in with the password it had on the source server.
+    await ctx.http().post('/api/auth/login').send({ email: originalEmail(a.users.ADMIN.user.id), password: TEST_PASSWORD }).expect(200);
+
+    const restoredGroups = (await ctx.prisma.userGroup.findMany({ where: { organizationId: target.organizationId }, select: { name: true } })).map((g) => g.name).sort();
+    expect(restoredGroups).toEqual(sourceGroups);
+    const settings = await ctx.prisma.organizationSettings.findUnique({ where: { organizationId: target.organizationId } });
+    expect(settings?.approvalQuorum).toBe(5);
+  });
+
+  it('a dry run reports what the file holds for every section and writes nothing', async () => {
+    const full = await exportBackup(a, { includePasswords: true });
+    const target = await createTenant(ctx, 'dryrun');
+    const before = await ctx.prisma.user.count({ where: { organizationId: target.organizationId } });
+    const run = await restore(target, full.zip, true);
+    expect(run.status).toBe('done');
+    expect(run.summary.dryRun).toBe(true);
+    expect(run.summary.extra.groups.inFile).toBeGreaterThan(0);
+    expect(run.summary.extra.passwordAccounts).toBeGreaterThan(0);
+    expect(run.summary.extra.checklists.inFile).toBeGreaterThan(0);
+    expect(run.summary.extra.training.records).toBeGreaterThan(0);
+    expect(run.summary.extra.settingsApplied).toBe(false);
+    expect(await ctx.prisma.user.count({ where: { organizationId: target.organizationId } })).toBe(before);
+    expect(await ctx.prisma.sop.count({ where: { organizationId: target.organizationId } })).toBe(0);
   });
 });

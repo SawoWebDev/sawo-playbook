@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SkipThrottle } from '@nestjs/throttler';
 import { randomUUID } from 'crypto';
@@ -11,6 +11,7 @@ import { AuthUser } from '../common/auth-user';
 import { CurrentUser, Public, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
 import { BackupsService } from './backups.service';
+import { StartBackupDto } from './backups.dto';
 
 const MAX_RESTORE_BYTES = Number(process.env.BACKUP_MAX_UPLOAD_MB ?? 4096) * 1024 * 1024;
 
@@ -28,8 +29,8 @@ export class BackupsController {
   @Post()
   @HttpCode(202)
   @RequirePermission(Permission.OrgSettingsManage)
-  start(@CurrentUser() actor: AuthUser) {
-    return this.backups.startExport(actor);
+  start(@CurrentUser() actor: AuthUser, @Body() dto: StartBackupDto) {
+    return this.backups.startExport(actor, dto.sections, dto.includePasswords);
   }
 
   @Post('restore')

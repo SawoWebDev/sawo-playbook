@@ -14,6 +14,7 @@ import {
   BackupKanban,
   BackupManifest,
   BackupMediaEntry,
+  BackupSection,
   BackupSop,
   BackupUser,
   BackupVersion,
@@ -36,6 +37,15 @@ function mediaExt(mime: string, originalFilename: string): string {
 }
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
+
+/** Media asset ids a kanban revision refers to in its proposed card fields. */
+function payloadMediaIds(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const p = payload as Record<string, unknown>;
+  const ids = typeof p.pictureAssetId === 'string' ? [p.pictureAssetId] : [];
+  if (Array.isArray(p.mediaAssetIds)) for (const m of p.mediaAssetIds) if (typeof m === 'string') ids.push(m);
+  return ids;
+}
 
 @Injectable()
 export class BackupExporter {
@@ -82,27 +92,30 @@ export class BackupExporter {
       const addJson = (name: string, value: unknown) => add(name, Buffer.from(JSON.stringify(value, null, 1), 'utf8'));
 
       // ── preparing ──
+      // Each section is read only when it was chosen. Users and media are pulled in by the sections that refer to them.
+      const want = new Set<BackupSection>(job.sections);
+    const withPasswords = want.has('people') && job.includePasswords;
+    if (withPasswords) {
+      this.jobs.warn(job, 'This backup contains sign-in password hashes. Keep the file private and delete it once the transfer is done.');
+    }
       job.phase = 'preparing';
       job.current = 'Reading organization';
-      const [org, creator, folderRows, sopRows, mediaRefs, kanbanRows] = await Promise.all([
+      const [org, creator, folderRows, sopRows, kanbanRows] = await Promise.all([
         this.prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true } }),
         this.prisma.user.findUnique({ where: { id: actor.id }, select: { name: true, email: true } }),
-        this.prisma.folder.findMany({ where: { organizationId: orgId, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
-        this.prisma.sop.findMany({ where: { organizationId: orgId, deletedAt: null }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: { id: true } }),
-        this.prisma.sopStepMedia.findMany({
-          where: { sopStep: { sopVersion: { lifecycleState: { not: 'ABANDONED' }, sop: { organizationId: orgId, deletedAt: null } } } },
-          select: { mediaAssetId: true },
-          distinct: ['mediaAssetId'],
-        }),
-        this.prisma.kanban.findMany({
-          where: { organizationId: orgId, deletedAt: null },
-          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
-          include: { media: { select: { mediaAssetId: true }, orderBy: { mediaAssetId: 'asc' } } },
-        }),
+        want.has('sops') ? this.prisma.folder.findMany({ where: { organizationId: orgId, deletedAt: null }, orderBy: { createdAt: 'asc' } }) : [],
+        want.has('sops') ? this.prisma.sop.findMany({ where: { organizationId: orgId, deletedAt: null }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: { id: true } }) : [],
+        want.has('kanbans')
+          ? this.prisma.kanban.findMany({
+              where: { organizationId: orgId, deletedAt: null },
+              orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+              include: { media: { select: { mediaAssetId: true }, orderBy: { mediaAssetId: 'asc' } } },
+            })
+          : [],
       ]);
       job.total.sops = sopRows.length;
       job.total.kanbans = kanbanRows.length;
-      job.total.media = mediaRefs.length;
+      job.total.media = 0;
       this.jobs.setPercent(job);
 
       // ── SOPs ──
@@ -242,6 +255,84 @@ export class BackupExporter {
       await addJson('kanbans.json', kanbans);
       job.bytes = arc.pointer();
 
+      // ── kanban revisions (open and past change proposals) ──
+      const revisions = want.has('kanbans') ? await this.prisma.kanbanRevision.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'asc' } }) : [];
+      if (want.has('kanbans')) {
+        for (const r of revisions) {
+          for (const uid of [r.createdById, r.updatedById, r.submittedById, r.preApprovedById, r.approvedById, r.publishedById, r.lastCommentById]) if (uid) userIds.add(uid);
+          for (const m of payloadMediaIds(r.payload)) mediaIds.add(m);
+        }
+        await addJson(
+          'kanban-revisions.json',
+          revisions.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), submittedAt: iso(r.submittedAt), preApprovedAt: iso(r.preApprovedAt), approvedAt: iso(r.approvedAt), publishedAt: iso(r.publishedAt) })),
+        );
+      }
+
+      // ── checklists: every submission with its responses ──
+      const submissions = want.has('checklists')
+        ? await this.prisma.checklistSubmission.findMany({ where: { organizationId: orgId }, orderBy: { startedAt: 'asc' }, include: { responses: { orderBy: { recordedAt: 'asc' } } } })
+        : [];
+      if (want.has('checklists')) {
+        for (const sub of submissions) {
+          userIds.add(sub.operatorId);
+          for (const r of sub.responses) if (r.mediaAssetId) mediaIds.add(r.mediaAssetId);
+        }
+        await addJson(
+          'checklists.json',
+          submissions.map((s) => ({ ...s, startedAt: s.startedAt.toISOString(), completedAt: iso(s.completedAt), responses: s.responses.map((r) => ({ ...r, recordedAt: r.recordedAt.toISOString() })) })),
+        );
+      }
+
+      // ── training: trainer assignments, assessments and current skill records ──
+      if (want.has('training')) {
+        const [trainerAssignments, skillAssessments, skillRecords] = await Promise.all([
+          this.prisma.trainerAssignment.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'asc' } }),
+          this.prisma.skillAssessment.findMany({ where: { organizationId: orgId }, orderBy: { assessedAt: 'asc' } }),
+          this.prisma.skillRecord.findMany({ where: { organizationId: orgId } }),
+        ]);
+        for (const t of trainerAssignments) for (const uid of [t.trainerId, t.associateId, t.assignedById]) userIds.add(uid);
+        for (const a of skillAssessments) for (const uid of [a.associateId, a.trainerId]) userIds.add(uid);
+        for (const r of skillRecords) userIds.add(r.associateId);
+        await addJson('training.json', {
+          trainerAssignments: trainerAssignments.map((t) => ({ ...t, createdAt: t.createdAt.toISOString() })),
+          skillAssessments: skillAssessments.map((a) => ({ ...a, assessedAt: a.assessedAt.toISOString() })),
+          skillRecords: skillRecords.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() })),
+        });
+      }
+
+      // ── settings: approval rules, role permissions and menu layout ──
+      if (want.has('settings')) {
+        const settings = await this.prisma.organizationSettings.findUnique({ where: { organizationId: orgId } });
+        await addJson('settings.json', settings ? { ...settings, organizationId: undefined, updatedAt: settings.updatedAt.toISOString() } : null);
+      }
+
+      // ── people: groups and pending invitations. Accounts are written with users.json below. ──
+      const groupRows = want.has('people')
+        ? await this.prisma.userGroup.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' }, include: { members: { select: { userId: true } } } })
+        : [];
+      const invitationRows = want.has('people') ? await this.prisma.invitation.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'asc' } }) : [];
+      const allUsers = want.has('people')
+        ? await this.prisma.user.findMany({
+            where: { organizationId: orgId },
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true, email: true, orgRole: true, status: true, extraPermissions: true, mfaEnabled: true, lastLoginAt: true, createdAt: true, passwordHash: withPasswords },
+          })
+        : [];
+      if (want.has('people')) {
+        await addJson('groups.json', groupRows.map((g) => ({ id: g.id, name: g.name, createdAt: g.createdAt.toISOString(), memberIds: g.members.map((m) => m.userId) })));
+        await addJson(
+          'invitations.json',
+          invitationRows.map((i) => ({ id: i.id, email: i.email, orgRole: i.orgRole, groupIds: i.groupIds, status: i.status, invitedById: i.invitedById, userId: i.userId, expiresAt: i.expiresAt.toISOString(), acceptedAt: iso(i.acceptedAt), createdAt: i.createdAt.toISOString() })),
+        );
+      }
+
+      // ── activity events (the audit trail is not part of a backup) ──
+      if (want.has('activity')) {
+        const events = await this.prisma.activityEvent.findMany({ where: { organizationId: orgId }, orderBy: { occurredAt: 'asc' } });
+        for (const e of events) if (e.actorId) userIds.add(e.actorId);
+        await addJson('activity.json', events.map((e) => ({ ...e, occurredAt: e.occurredAt.toISOString() })));
+      }
+
       // ── media ──
       job.phase = 'media';
       job.total.media = mediaIds.size;
@@ -289,9 +380,21 @@ export class BackupExporter {
       // ── finalizing ──
       job.phase = 'finalizing';
       job.current = 'Writing index files';
-      const users: BackupUser[] = (
-        await this.prisma.user.findMany({ where: { id: { in: [...userIds] }, organizationId: orgId }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' } })
-      ).map((u) => ({ id: u.id, name: u.name, email: u.email }));
+      // With the people section every account is written. Without it, only the people other sections refer to.
+      const users: BackupUser[] = want.has('people')
+        ? allUsers.map((u) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            orgRole: u.orgRole,
+            status: u.status,
+            extraPermissions: [...u.extraPermissions].sort(),
+            mfaEnabled: u.mfaEnabled,
+            lastLoginAt: iso(u.lastLoginAt),
+            createdAt: u.createdAt.toISOString(),
+            ...(withPasswords ? { passwordHash: (u as { passwordHash?: string | null }).passwordHash ?? null } : {}),
+          }))
+        : (await this.prisma.user.findMany({ where: { id: { in: [...userIds] }, organizationId: orgId }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' } })).map((u) => ({ id: u.id, name: u.name, email: u.email }));
       const folders: BackupFolder[] = folderRows.map((f) => ({ id: f.id, parentId: f.parentId, name: f.name, createdAt: f.createdAt.toISOString() }));
       await addJson('folders.json', folders);
       await addJson('users.json', users);
@@ -303,8 +406,34 @@ export class BackupExporter {
         createdBy: { name: creator?.name ?? actor.name, email: creator?.email ?? actor.email },
         organization: { name: org.name },
         source: { app: 'sawo-playbook' },
-        counts: { folders: folders.length, users: users.length, sops: sopRows.length, versions: versionCount, steps: stepCount, media: mediaEntries.filter((m) => !m.missing).length, mediaBytes, kanbans: kanbans.length },
-        files: { folders: 'folders.json', users: 'users.json', media: 'media.json', sops: sopFiles, kanbans: 'kanbans.json' },
+        sections: [...job.sections],
+        passwords: withPasswords,
+        counts: {
+          folders: folders.length,
+          users: users.length,
+          sops: sopRows.length,
+          versions: versionCount,
+          steps: stepCount,
+          media: mediaEntries.filter((m) => !m.missing).length,
+          mediaBytes,
+          kanbans: kanbanRows.length,
+          ...(want.has('kanbans') ? { kanbanRevisions: revisions.length } : {}),
+          ...(want.has('people') ? { groups: groupRows.length, invitations: invitationRows.length } : {}),
+          ...(want.has('checklists') ? { checklistSubmissions: submissions.length } : {}),
+        },
+        files: {
+          folders: 'folders.json',
+          users: 'users.json',
+          media: 'media.json',
+          sops: sopFiles,
+          kanbans: 'kanbans.json',
+          ...(want.has('kanbans') ? { kanbanRevisions: 'kanban-revisions.json' } : {}),
+          ...(want.has('people') ? { groups: 'groups.json', invitations: 'invitations.json' } : {}),
+          ...(want.has('checklists') ? { checklists: 'checklists.json' } : {}),
+          ...(want.has('training') ? { training: 'training.json' } : {}),
+          ...(want.has('settings') ? { settings: 'settings.json' } : {}),
+          ...(want.has('activity') ? { activity: 'activity.json' } : {}),
+        },
         warnings: job.warnings.slice(),
       };
       await addJson('manifest.json', manifest);
@@ -326,7 +455,7 @@ export class BackupExporter {
         actorId: actor.id,
         entityType: 'backup',
         entityId: job.id,
-        metadata: { ...job.file.counts, sizeBytes: size },
+        metadata: { ...job.file.counts, sections: [...job.sections], passwords: withPasswords, sizeBytes: size },
       });
       await this.jobs.finish(job);
     } catch (err) {

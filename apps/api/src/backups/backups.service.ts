@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { createHmac, timingSafeEqual } from 'crypto';
 import { stat } from 'fs/promises';
 import { AuthUser } from '../common/auth-user';
+import { BackupSection, BACKUP_SECTIONS } from './backup-format';
 import { BackupExporter } from './backup-export.service';
 import { BackupJob, BackupJobs, backupZipPath } from './backup-jobs';
 import { BackupRestorer } from './backup-restore.service';
@@ -23,14 +24,20 @@ export class BackupsService {
     private readonly restorer: BackupRestorer,
   ) {}
 
-  /** Starts a full backup in the background. If one is already running for this organization, that one is returned instead. */
-  startExport(actor: AuthUser): BackupJobView {
+  /**
+   * Starts a backup in the background with the chosen sections (all of them when none are given). If one is already
+   * running for this organization, that one is returned instead.
+   */
+  startExport(actor: AuthUser, requested?: BackupSection[], includePasswords = false): BackupJobView {
+    if (requested?.length === 0) throw new BadRequestException('Choose at least one part to back up');
+    const sections = requested?.length ? [...new Set(requested)] : [...BACKUP_SECTIONS];
+    if (includePasswords && !sections.includes('people')) throw new BadRequestException('Passwords can only be included with the People section');
     const running = this.jobs.findRunning(actor.organizationId);
     if (running) {
       if (running.kind === 'export') return view(running);
       throw new ConflictException('A restore is running — wait for it to finish before starting a backup');
     }
-    const job = this.jobs.create({ kind: 'export', organizationId: actor.organizationId, startedById: actor.id, startedByName: actor.name });
+    const job = this.jobs.create({ kind: 'export', organizationId: actor.organizationId, startedById: actor.id, startedByName: actor.name, sections, includePasswords });
     void this.exporter.run(job, actor);
     return view(job);
   }

@@ -12,6 +12,7 @@ import { Avatar, ROLE_ICON } from '@/components/users/Avatar';
 import { CreateUserDialog } from '@/components/users/CreateUserDialog';
 import { InviteDialog, type GroupOption } from '@/components/users/InviteDialog';
 import { ROLE_PILL_CLASS, STATUS_BADGE, STATUS_LABEL, type UserRow } from '@/components/users/shared';
+import { permissionLabel } from '@/lib/permission-labels';
 
 interface InvitationRow {
   id: string;
@@ -234,6 +235,11 @@ export default function UsersPage() {
                               {u.name}
                               {u.id === me?.id && <span className="grp-chip">You</span>}
                               {u.mfaEnabled && <i className="fa-solid fa-shield-halved um-mfa" title="Two-factor sign-in is on" aria-label="Two-factor sign-in is on" />}
+                              {u.extraPermissions?.length > 0 && (
+                                <span className="badge badge-blue" title={u.extraPermissions.map(permissionLabel).join('\n')}>
+                                  <i className="fa-solid fa-user-shield" aria-hidden /> Special access
+                                </span>
+                              )}
                             </span>
                             <span className="muted grp-member-email">{u.email}</span>
                           </div>

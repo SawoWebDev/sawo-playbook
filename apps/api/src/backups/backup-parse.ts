@@ -1,9 +1,16 @@
 import {
   BACKUP_FORMAT,
   BACKUP_FORMAT_VERSION,
+  BackupActivity,
+  BackupChecklist,
+  BackupChecklistResponse,
   BackupFolder,
+  BackupGroup,
   BackupKanban,
   BackupLifecycle,
+  BackupRevision,
+  BackupSettings,
+  BackupTraining,
   BackupManifest,
   BackupMediaEntry,
   BackupSop,
@@ -92,7 +99,22 @@ export function parseManifest(raw: unknown): BackupManifest {
       mediaBytes: int(counts.mediaBytes, 'counts.mediaBytes', 0, Number.MAX_SAFE_INTEGER),
       ...(counts.kanbans === undefined ? {} : { kanbans: int(counts.kanbans, 'counts.kanbans', 0, 1e9) }),
     },
-    files: { folders: 'folders.json', users: 'users.json', media: 'media.json', sops: sopFiles, ...(files.kanbans === undefined ? {} : { kanbans: 'kanbans.json' }) },
+    files: {
+      folders: 'folders.json',
+      users: 'users.json',
+      media: 'media.json',
+      sops: sopFiles,
+      ...(files.kanbans === undefined ? {} : { kanbans: 'kanbans.json' }),
+      ...optionalFiles(files, {
+        kanbanRevisions: 'kanban-revisions.json',
+        groups: 'groups.json',
+        invitations: 'invitations.json',
+        settings: 'settings.json',
+        training: 'training.json',
+        checklists: 'checklists.json',
+        activity: 'activity.json',
+      }),
+    },
     warnings: Array.isArray(o.warnings) ? o.warnings.filter((w): w is string => typeof w === 'string').slice(0, 200) : [],
   };
 }
@@ -107,8 +129,179 @@ export function parseFolders(raw: unknown): BackupFolder[] {
 export function parseUsers(raw: unknown): BackupUser[] {
   return arr(raw, 'users.json', 100_000).map((u, i) => {
     const o = obj(u, `users[${i}]`);
-    return { id: id(o.id, 'user id'), name: str(o.name, 'user name', 200, { min: 1 }), email: str(o.email, 'user email', 320, { min: 3 }) };
+    const w = `users[${i}]`;
+    return {
+      id: id(o.id, 'user id'),
+      name: str(o.name, 'user name', 200, { min: 1 }),
+      email: str(o.email, 'user email', 320, { min: 3 }),
+      orgRole: optional(o, 'orgRole', (v) => oneOf(v, `${w}.orgRole`, ROLE_NAMES)),
+      status: optional(o, 'status', (v) => oneOf(v, `${w}.status`, USER_STATUSES)),
+      extraPermissions: optional(o, 'extraPermissions', (v) => arr(v, `${w}.extraPermissions`, 200).map((p, j) => str(p, `${w}.extraPermissions[${j}]`, 100, { min: 1 }))),
+      passwordHash: optional(o, 'passwordHash', (v) => strOrNull(v, `${w}.passwordHash`, 500)),
+      mfaEnabled: optional(o, 'mfaEnabled', (v) => bool(v, `${w}.mfaEnabled`)),
+      lastLoginAt: optional(o, 'lastLoginAt', (v) => dateOrNull(v, `${w}.lastLoginAt`)),
+      createdAt: optional(o, 'createdAt', (v) => date(v, `${w}.createdAt`)),
+    };
   });
+}
+
+/** Every role the database holds. OWNER is the legacy form of Admin and TRAINER has no permissions. */
+const ROLE_NAMES = ['OWNER', 'ADMIN', 'EDITOR', 'APPROVER', 'TRAINER', 'OPERATOR', 'PRE_APPROVER'] as const;
+const USER_STATUSES = ['invited', 'active', 'suspended', 'removed'] as const;
+const REVISION_STATES = ['DRAFT', 'PENDING_PRE_APPROVAL', 'PRE_APPROVED', 'APPROVED', 'PUBLISHED', 'DISCARDED'] as const;
+const CHECKLIST_STATUSES = ['in_progress', 'completed', 'abandoned'] as const;
+const CHECKLIST_RESULTS = ['ok', 'not_ok', 'n_a'] as const;
+
+/** A value that may be missing from an older file. */
+function optional<T>(o: Obj, key: string, parse: (v: unknown) => T): T | undefined {
+  return o[key] === undefined ? undefined : parse(o[key]);
+}
+
+/** Optional files a format 2 backup may list. Each must have its exact expected name, so nothing unexpected is read. */
+function optionalFiles(files: Obj, expected: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, name] of Object.entries(expected)) {
+    if (files[key] === undefined) continue;
+    if (files[key] !== name) throw new BackupFormatError(`files.${key} has an unexpected name`);
+    out[key] = name;
+  }
+  return out;
+}
+
+export function parseGroups(raw: unknown): BackupGroup[] {
+  return arr(raw, 'groups.json', 10_000).map((g, i) => {
+    const o = obj(g, `groups[${i}]`);
+    return {
+      id: id(o.id, `groups[${i}].id`),
+      name: str(o.name, `groups[${i}].name`, 200, { min: 1 }),
+      createdAt: date(o.createdAt, `groups[${i}].createdAt`),
+      memberIds: arr(o.memberIds ?? [], `groups[${i}].memberIds`, 100_000).map((m, j) => id(m, `groups[${i}].memberIds[${j}]`)),
+    };
+  });
+}
+
+export function parseSettings(raw: unknown): BackupSettings | null {
+  if (raw === null || raw === undefined) return null;
+  const o = obj(raw, 'settings.json');
+  const jsonObjOrNull = (v: unknown, what: string) => (v === null || v === undefined ? null : obj(v, what));
+  return {
+    approvalRequired: bool(o.approvalRequired, 'settings.approvalRequired'),
+    approvalQuorum: int(o.approvalQuorum, 'settings.approvalQuorum', 1, 100),
+    allowSelfApproval: bool(o.allowSelfApproval, 'settings.allowSelfApproval'),
+    publicSopViewing: bool(o.publicSopViewing, 'settings.publicSopViewing'),
+    rolePermissions: jsonObjOrNull(o.rolePermissions, 'settings.rolePermissions'),
+    navConfig: jsonObjOrNull(o.navConfig, 'settings.navConfig'),
+  };
+}
+
+export function parseRevisions(raw: unknown): BackupRevision[] {
+  return arr(raw, 'kanban-revisions.json', 1_000_000).map((r, i) => {
+    const w = `revision ${i + 1}`;
+    const o = obj(r, w);
+    return {
+      id: id(o.id, `${w} id`),
+      kanbanId: idOrNull(o.kanbanId, `${w} kanbanId`),
+      state: oneOf(o.state, `${w} state`, REVISION_STATES),
+      payload: obj(o.payload, `${w} payload`),
+      routingGroupIds: ids(o.routingGroupIds, `${w} routingGroupIds`, 1000),
+      createdById: id(o.createdById, `${w} createdById`),
+      updatedById: id(o.updatedById, `${w} updatedById`),
+      submittedById: idOrNull(o.submittedById, `${w} submittedById`),
+      submittedAt: dateOrNull(o.submittedAt, `${w} submittedAt`),
+      preApprovedById: idOrNull(o.preApprovedById, `${w} preApprovedById`),
+      preApprovedAt: dateOrNull(o.preApprovedAt, `${w} preApprovedAt`),
+      approvedById: idOrNull(o.approvedById, `${w} approvedById`),
+      approvedAt: dateOrNull(o.approvedAt, `${w} approvedAt`),
+      publishedById: idOrNull(o.publishedById, `${w} publishedById`),
+      publishedAt: dateOrNull(o.publishedAt, `${w} publishedAt`),
+      lastComment: strOrNull(o.lastComment, `${w} lastComment`, 5000),
+      lastCommentById: idOrNull(o.lastCommentById, `${w} lastCommentById`),
+      createdAt: date(o.createdAt, `${w} createdAt`),
+      updatedAt: date(o.updatedAt, `${w} updatedAt`),
+    };
+  });
+}
+
+export function parseTraining(raw: unknown): BackupTraining {
+  const o = obj(raw, 'training.json');
+  const list = (v: unknown, what: string) => arr(v ?? [], what, 1_000_000);
+  return {
+    trainerAssignments: list(o.trainerAssignments, 'trainerAssignments').map((t, i) => {
+      const x = obj(t, `trainerAssignments[${i}]`);
+      return { trainerId: id(x.trainerId, 'trainerId'), associateId: id(x.associateId, 'associateId'), assignedById: id(x.assignedById, 'assignedById'), createdAt: date(x.createdAt, 'trainer createdAt') };
+    }),
+    skillAssessments: list(o.skillAssessments, 'skillAssessments').map((a, i) => {
+      const x = obj(a, `skillAssessments[${i}]`);
+      return {
+        id: id(x.id, 'assessment id'),
+        associateId: id(x.associateId, 'assessment associateId'),
+        sopId: id(x.sopId, 'assessment sopId'),
+        sopVersionId: id(x.sopVersionId, 'assessment sopVersionId'),
+        level: int(x.level, 'assessment level', 0, 4),
+        trainerId: id(x.trainerId, 'assessment trainerId'),
+        assessedAt: date(x.assessedAt, 'assessment assessedAt'),
+        notes: strOrNull(x.notes, 'assessment notes', 2000),
+      };
+    }),
+    skillRecords: list(o.skillRecords, 'skillRecords').map((r, i) => {
+      const x = obj(r, `skillRecords[${i}]`);
+      return {
+        associateId: id(x.associateId, 'record associateId'),
+        sopId: id(x.sopId, 'record sopId'),
+        currentLevel: int(x.currentLevel, 'record currentLevel', 0, 4),
+        currentSopVersionId: id(x.currentSopVersionId, 'record currentSopVersionId'),
+        lastAssessmentId: id(x.lastAssessmentId, 'record lastAssessmentId'),
+        updatedAt: date(x.updatedAt, 'record updatedAt'),
+      };
+    }),
+  };
+}
+
+export function parseChecklists(raw: unknown): BackupChecklist[] {
+  return arr(raw, 'checklists.json', 1_000_000).map((s, i) => {
+    const w = `checklist ${i + 1}`;
+    const o = obj(s, w);
+    return {
+      id: id(o.id, `${w} id`),
+      sopVersionId: id(o.sopVersionId, `${w} sopVersionId`),
+      operatorId: id(o.operatorId, `${w} operatorId`),
+      startedAt: date(o.startedAt, `${w} startedAt`),
+      completedAt: dateOrNull(o.completedAt, `${w} completedAt`),
+      status: oneOf(o.status, `${w} status`, CHECKLIST_STATUSES),
+      responses: arr(o.responses ?? [], `${w} responses`, 100_000).map((r, j): BackupChecklistResponse => {
+        const x = obj(r, `${w} response ${j + 1}`);
+        return {
+          id: id(x.id, 'response id'),
+          stepId: id(x.stepId, 'response stepId'),
+          value: strOrNull(x.value, 'response value', 5000),
+          result: x.result === null || x.result === undefined ? null : oneOf(x.result, 'response result', CHECKLIST_RESULTS),
+          comment: strOrNull(x.comment, 'response comment', 5000),
+          mediaAssetId: idOrNull(x.mediaAssetId, 'response mediaAssetId'),
+          recordedAt: date(x.recordedAt, 'response recordedAt'),
+        };
+      }),
+    };
+  });
+}
+
+export function parseActivity(raw: unknown): BackupActivity[] {
+  return arr(raw, 'activity.json', 5_000_000).map((e, i) => {
+    const o = obj(e, `activity ${i + 1}`);
+    return {
+      id: id(o.id, 'activity id'),
+      actorId: idOrNull(o.actorId, 'activity actorId'),
+      eventType: str(o.eventType, 'activity eventType', 200, { min: 1 }),
+      entityType: strOrNull(o.entityType, 'activity entityType', 100),
+      entityId: strOrNull(o.entityId, 'activity entityId', 100),
+      metadata: o.metadata ?? {},
+      occurredAt: date(o.occurredAt, 'activity occurredAt'),
+    };
+  });
+}
+
+/** Ids as a list, for optional lists that may be missing. */
+function ids(v: unknown, what: string, max: number): string[] {
+  return arr(v ?? [], what, max).map((x, i) => id(x, `${what}[${i}]`));
 }
 
 export function parseMedia(raw: unknown): BackupMediaEntry[] {

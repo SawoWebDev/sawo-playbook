@@ -50,12 +50,13 @@ export class UsersService {
   async list(actor: AuthUser) {
     const rows = await this.prisma.user.findMany({
       where: { organizationId: actor.organizationId },
-      select: { ...USER_SELECT, groupMemberships: { select: { group: { select: { id: true, name: true } } } } },
+      select: { ...USER_SELECT, extraPermissions: true, groupMemberships: { select: { group: { select: { id: true, name: true } } } } },
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
     });
     // Same helper as GET /users/:id, so the list and the detail can never disagree.
     return rows.map(({ groupMemberships, ...u }) => ({
       ...u,
+      extraPermissions: [...u.extraPermissions].sort(),
       groups: groupMemberships.map((m) => m.group),
       approvalReadiness: this.approvalReadiness(u),
     }));

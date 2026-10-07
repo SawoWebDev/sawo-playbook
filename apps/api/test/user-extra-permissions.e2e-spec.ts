@@ -61,6 +61,16 @@ describe('extra permissions', () => {
     await ctx.http().patch(`/api/users/${e.user.id}/permissions`).set(a.users.APPROVER.auth).send({ permissions: ['sop.edit'] }).expect(403);
   });
 
+  it("the user list carries each person's extra permissions, so the list can show a special-access badge", async () => {
+    const e = await a.addUser("APPROVER", "extra-list");
+    await ctx.http().patch(`/api/users/${e.user.id}/permissions`).set(a.users.ADMIN.auth).send({ permissions: ["sop.view"] }).expect(200);
+    const list = await ctx.http().get("/api/users").set(a.users.ADMIN.auth).expect(200);
+    const row = list.body.find((u: { id: string }) => u.id === e.user.id);
+    expect(row.extraPermissions).toEqual(["sop.view"]);
+    const plain = list.body.find((u: { id: string }) => u.id === a.users.EDITOR.user.id);
+    expect(plain.extraPermissions).toEqual([]);
+  });
+
   it('another organisation cannot change a person\'s extras', async () => {
     const e = await a.addUser('OPERATOR', 'extra-cross');
     await ctx.http().patch(`/api/users/${e.user.id}/permissions`).set(b.users.ADMIN.auth).send({ permissions: ['sop.edit'] }).expect(404);

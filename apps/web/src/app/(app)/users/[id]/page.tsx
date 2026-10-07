@@ -358,14 +358,25 @@ function AdditionalAccess({
 
   if (!open) {
     return (
-      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
-        <span className="muted" style={{ fontSize: 13 }}>
-          {extras.length === 0 ? 'No extra permissions for this person.' : `${extras.length} extra ${extras.length === 1 ? 'permission' : 'permissions'} granted to this person.`}
-        </span>
-        <button className="btn btn-sm" type="button" onClick={() => setOpen(true)} aria-expanded={false}>
-          <i className="fa-solid fa-user-shield" aria-hidden /> Show additional access
-        </button>
-      </div>
+      <>
+        <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: extras.length ? 10 : 0 }}>
+          <span className="muted" style={{ fontSize: 13 }}>
+            {extras.length === 0 ? 'No extra permissions for this person.' : `${extras.length} extra ${extras.length === 1 ? 'permission' : 'permissions'} granted to this person:`}
+          </span>
+          <button className="btn btn-sm" type="button" onClick={() => setOpen(true)} aria-expanded={false}>
+            <i className="fa-solid fa-user-shield" aria-hidden /> Show additional access
+          </button>
+        </div>
+        {extras.length > 0 && (
+          <ul className="um-groups" style={{ listStyle: 'none', margin: 0, padding: 0 }} aria-label="Extra permissions granted">
+            {[...extras].sort().map((k) => (
+              <li key={k}>
+                <span className="role-pill role-pill--approver">{permissionLabel(k)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
     );
   }
 
@@ -392,10 +403,10 @@ function AdditionalAccess({
                 {keys.map((k) => {
                   const included = fromRole.has(k);
                   const checked = included || extras.includes(k);
-                  const added = !included && extras.includes(k);
+                  const extra = !included && extras.includes(k);
                   return (
                     <li key={k}>
-                      <label className={`rl-perm${added ? ' is-changed' : ''}`}>
+                      <label className={`rl-perm${extra ? ' is-extra' : ''}`}>
                         <span>
                           {actionLabel(k)}
                           {included && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>from {roleName}</span>}

@@ -23,6 +23,16 @@ interface RestoreSummary {
   usersCreated: number;
   usersMatched: number;
   kanbans: { inFile: number; created: number; skipped: number; failed: { partCode: string; error: string }[] };
+  extra?: {
+    groups: { inFile: number; created: number; memberships: number };
+    settingsApplied: boolean;
+    passwordAccounts: number;
+    invitationsInFile: number;
+    revisions: { inFile: number; created: number; skipped: number };
+    checklists: { inFile: number; created: number; skipped: number };
+    training: { trainers: number; assessments: number; records: number; skipped: number };
+    activity: { inFile: number; created: number };
+  };
 }
 
 interface Job {
@@ -35,6 +45,8 @@ interface Job {
   finishedAt: string | null;
   startedByName: string;
   sourceName: string | null;
+  /** Export: what this backup includes. */
+  sections: BackupSection[];
   percent: number;
   total: { sops: number; kanbans: number; media: number };
   done: { sops: number; kanbans: number; media: number };
@@ -44,6 +56,37 @@ interface Job {
   error: string | null;
   file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; kanbans: number; media: number } } | null;
   summary: RestoreSummary | null;
+}
+
+type BackupSection = 'sops' | 'kanbans' | 'people' | 'settings' | 'training' | 'checklists' | 'activity';
+
+/** Every section, in display order. A backup with all of them is the full backup and is the default. */
+const ALL_SECTIONS: BackupSection[] = ['sops', 'kanbans', 'people', 'settings', 'training', 'checklists', 'activity'];
+
+const SECTION_LABEL: Record<BackupSection, string> = {
+  sops: 'SOPs & folders',
+  kanbans: 'Kanbans',
+  people: 'People & groups',
+  settings: 'Settings & roles',
+  training: 'Training & skills',
+  checklists: 'Checklists',
+  activity: 'Activity log',
+};
+
+const SECTION_HINT: Record<BackupSection, string> = {
+  sops: 'Every SOP, version, step, approval and image',
+  kanbans: 'Every kanban card and its open change proposals',
+  people: 'All accounts with role, status and special access, plus groups and pending invitations',
+  settings: 'Approval rules, role permissions and the sidebar menu',
+  training: 'Trainer assignments, skill assessments and current skill levels',
+  checklists: 'Checklist submissions and their answers',
+  activity: 'Activity events (the audit trail is not included)',
+};
+
+/** Short description of what a backup holds, for the list. */
+function coverage(sections: BackupSection[]): string {
+  if (sections.length === ALL_SECTIONS.length) return 'Full backup';
+  return sections.map((s) => SECTION_LABEL[s]).join(', ');
 }
 
 function fmtBytes(n: number): string {
@@ -94,6 +137,8 @@ function Backups() {
   const [jobsLoaded, setJobsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sections, setSections] = useState<BackupSection[]>(ALL_SECTIONS);
+  const [includePasswords, setIncludePasswords] = useState(false);
   const attachedOnce = useRef(false);
   const isManager = hasPermission(user, 'org.settings.manage');
 
@@ -172,8 +217,9 @@ function Backups() {
     setBusy(true);
     setError(null);
     try {
-      const j = await api<Job>('/backups', { method: 'POST' });
-      toast.info('Backup started. You can follow its progress below.');
+      const withPasswords = includePasswords && sections.includes('people');
+      const j = await api<Job>('/backups', { method: 'POST', body: { sections, includePasswords: withPasswords } });
+      toast.info(sections.length === ALL_SECTIONS.length ? 'Full backup started. You can follow its progress below.' : `Backup started (${coverage(sections)}). You can follow its progress below.`);
       watch(j.id);
       void loadList();
     } catch (e) {
@@ -226,14 +272,55 @@ function Backups() {
     <>
       <div className="page-head">
         <p className="page-lead">
-          A backup is one file with every SOP and kanban in this organization: all versions, steps, settings and images. It can be restored here or into another organization. Keep copies somewhere safe.
+          A backup is one file with everything in this Playbook. Everything is included by default; switch off what you do not need. Keep copies somewhere safe.
         </p>
         <div className="page-head-actions">
           <button className="btn btn-primary" onClick={() => void startBackup()} disabled={busy || running}>
-            <i className="fa-solid fa-cloud-arrow-down" aria-hidden /> {running ? 'Working…' : 'Create backup'}
+            <i className="fa-solid fa-cloud-arrow-down" aria-hidden /> {running ? 'Working…' : sections.length === ALL_SECTIONS.length ? 'Create full backup' : 'Create backup'}
           </button>
         </div>
       </div>
+
+      <section className="card" aria-label="What to include" style={{ marginBottom: 16 }}>
+        <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0 }}>What to include</h3>
+          {sections.length === ALL_SECTIONS.length ? <span className="badge badge-green">Full backup</span> : <span className="badge badge-amber">Partial backup: {coverage(sections)}</span>}
+        </div>
+        <div className="um-role-chips" role="group" aria-label="Sections to include" style={{ marginTop: 12 }}>
+          {ALL_SECTIONS.map((s) => {
+            const on = sections.includes(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                className={`um-role-chip${on ? ' is-on' : ''}`}
+                aria-pressed={on}
+                title={SECTION_HINT[s]}
+                disabled={busy || running || (on && sections.length === 1)}
+                onClick={() => setSections((x) => (on ? x.filter((v) => v !== s) : ALL_SECTIONS.filter((v) => v === s || x.includes(v))))}
+              >
+                {SECTION_LABEL[s]}
+              </button>
+            );
+          })}
+        </div>
+        {sections.includes('people') && (
+          <label className="row" style={{ marginTop: 12, fontWeight: 400, alignItems: 'flex-start' }}>
+            <input type="checkbox" style={{ width: 'auto', marginTop: 3 }} checked={includePasswords} disabled={busy || running} onChange={(e) => setIncludePasswords(e.target.checked)} />
+            <span style={{ fontSize: 13 }}>
+              Include sign-in passwords, for the one-time transfer only. The file then holds password hashes: keep it private and delete it after the import.
+            </span>
+          </label>
+        )}
+        <p className="muted" style={{ fontSize: 12, marginBottom: 0, marginTop: 10 }}>
+          Two-factor secrets, sign-in sessions and reset tokens are never included. A restore brings everything in the file back; people who already have an account here keep theirs.
+        </p>
+        {sections.length !== ALL_SECTIONS.length && (
+          <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-sm" type="button" disabled={busy || running} onClick={() => setSections(ALL_SECTIONS)}>Select everything</button>
+          </div>
+        )}
+      </section>
 
       <div className="kpi-grid">
         <div className="kpi">
@@ -306,6 +393,7 @@ function Backups() {
                           <i className={`fa-solid ${j.kind === 'export' ? 'fa-box-archive' : j.dryRun ? 'fa-magnifying-glass' : 'fa-clock-rotate-left'}`} aria-hidden />
                           {j.kind === 'export' ? 'Backup' : j.dryRun ? 'Restore check' : 'Restore'}
                         </span>{' '}
+                        {j.kind === 'export' && j.sections?.length > 0 && <span className="muted" style={{ fontSize: 12 }}>{coverage(j.sections)}</span>}{' '}
                         {j.status === 'running' && <span className="badge badge-amber">running</span>}
                         {j.status === 'failed' && <span className="badge badge-red">failed</span>}
                       </td>
@@ -461,6 +549,49 @@ function RestoreResult({ summary }: { summary: RestoreSummary }) {
         {!summary.dryRun && (summary.foldersCreated > 0 || summary.usersCreated > 0) &&
           ` Also created ${summary.foldersCreated} folder(s) and ${summary.usersCreated} placeholder user(s) for people who were not in this organization.`}
       </p>
+      {summary.extra && (
+        <ul className="bk-extra" style={{ margin: '0 0 6px', paddingLeft: 18 }}>
+          {summary.extra.groups.inFile > 0 && (
+            <li>
+              <strong>{summary.dryRun ? summary.extra.groups.inFile : summary.extra.groups.created}</strong> {summary.dryRun ? 'groups in the file' : 'groups restored'}, with {summary.extra.groups.memberships} memberships.
+            </li>
+          )}
+          {(summary.dryRun ? true : summary.extra.settingsApplied) && <li>{summary.dryRun ? 'Organization settings in the file.' : 'Organization settings applied: approval rules, role permissions and menu layout.'}</li>}
+          {summary.extra.passwordAccounts > 0 && (
+            <li>
+              <strong>{summary.extra.passwordAccounts}</strong> {summary.dryRun ? 'accounts carry' : 'accounts restored with'} their sign-in password.
+            </li>
+          )}
+          {summary.extra.revisions.inFile > 0 && (
+            <li>
+              <strong>{summary.dryRun ? summary.extra.revisions.inFile : summary.extra.revisions.created}</strong> kanban proposals {summary.dryRun ? 'in the file' : 'restored'}
+              {!summary.dryRun && summary.extra.revisions.skipped > 0 ? `, ${summary.extra.revisions.skipped} skipped` : ''}.
+            </li>
+          )}
+          {summary.extra.checklists.inFile > 0 && (
+            <li>
+              <strong>{summary.dryRun ? summary.extra.checklists.inFile : summary.extra.checklists.created}</strong> checklist submissions {summary.dryRun ? 'in the file' : 'restored'}
+              {!summary.dryRun && summary.extra.checklists.skipped > 0 ? `, ${summary.extra.checklists.skipped} skipped` : ''}.
+            </li>
+          )}
+          {(summary.extra.training.trainers + summary.extra.training.assessments + summary.extra.training.records) > 0 && (
+            <li>
+              Training: {summary.extra.training.trainers} trainers, {summary.extra.training.assessments} assessments, {summary.extra.training.records} skill records
+              {summary.dryRun ? ' in the file' : ' restored'}.
+            </li>
+          )}
+          {summary.extra.activity.inFile > 0 && (
+            <li>
+              <strong>{summary.dryRun ? summary.extra.activity.inFile : summary.extra.activity.created}</strong> activity events {summary.dryRun ? 'in the file' : 'restored'}.
+            </li>
+          )}
+          {summary.extra.invitationsInFile > 0 && (
+            <li className="muted">
+              {summary.extra.invitationsInFile} pending invitations in the file are not restored: their links cannot be carried over, so send them again.
+            </li>
+          )}
+        </ul>
+      )}
       {summary.kanbans.inFile > 0 && (
         <p style={{ margin: '0 0 6px' }}>
           <strong>{summary.kanbans.created}</strong> {summary.dryRun ? 'kanbans would be created' : 'kanbans restored'}
