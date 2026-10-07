@@ -446,7 +446,7 @@ export class BackupExporter {
       job.file = {
         name: `sawo-playbook-backup-${manifest.createdAt.slice(0, 19).replace(/[-:]/g, '').replace('T', '-')}.zip`,
         sizeBytes: size,
-        counts: { sops: sopRows.length, versions: versionCount, steps: stepCount, kanbans: kanbans.length, media: manifest.counts.media },
+        counts: { sops: sopRows.length, versions: versionCount, steps: stepCount, kanbans: kanbans.length, media: manifest.counts.media, users: users.length },
       };
       this.jobs.setPercent(job, true);
       await this.audit.record({

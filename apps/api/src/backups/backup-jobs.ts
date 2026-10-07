@@ -60,7 +60,7 @@ export interface BackupJob {
   warnings: string[];
   error: string | null;
   /** Export result. */
-  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; kanbans: number; media: number } } | null;
+  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; kanbans: number; media: number; users?: number } } | null;
   /** Restore result. */
   summary: RestoreSummary | null;
   /** Source file name for a restore. */

@@ -54,7 +54,7 @@ interface Job {
   current: string | null;
   warnings: string[];
   error: string | null;
-  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; kanbans: number; media: number } } | null;
+  file: { name: string; sizeBytes: number; counts: { sops: number; versions: number; steps: number; kanbans: number; media: number; users?: number } } | null;
   summary: RestoreSummary | null;
 }
 
@@ -379,6 +379,7 @@ function Backups() {
                     <th>By</th>
                     <th className="num">SOPs</th>
                     <th className="num">Kanbans</th>
+                    <th className="num">Users</th>
                     <th className="num">Images</th>
                     <th className="num">Size</th>
                     <th aria-label="Actions" />
@@ -400,6 +401,7 @@ function Backups() {
                       <td>{j.startedByName}</td>
                       <td className="num">{j.file?.counts.sops ?? j.summary?.created ?? '—'}</td>
                       <td className="num">{j.file?.counts.kanbans ?? j.summary?.kanbans?.created ?? '—'}</td>
+                      <td className="num">{j.file?.counts.users ?? j.summary?.usersCreated ?? '—'}</td>
                       <td className="num">{j.file?.counts.media ?? j.summary?.mediaCreated ?? '—'}</td>
                       <td className="num">{j.file ? fmtBytes(j.file.sizeBytes) : '—'}</td>
                       <td>
@@ -491,6 +493,7 @@ function ProgressPanel({ job, onDownload }: { job: Job; onDownload: () => void }
         <Tile label={verbs.sops} value={`${job.done.sops} / ${job.total.sops}`} />
         {(isExport || job.total.kanbans > 0) && <Tile label={verbs.kanbans} value={`${job.done.kanbans} / ${job.total.kanbans}`} />}
         <Tile label={verbs.media} value={`${job.done.media} / ${job.total.media}`} />
+        {job.file?.counts.users !== undefined && <Tile label="Users" value={String(job.file.counts.users)} />}
         <Tile label={isExport ? (job.status === 'running' ? 'File size so far' : 'File size') : 'Image data'} value={fmtBytes(job.bytes)} />
         <Tile label="Elapsed" value={fmtElapsed(elapsed)} />
       </div>
@@ -504,7 +507,7 @@ function ProgressPanel({ job, onDownload }: { job: Job; onDownload: () => void }
         <div className="bk-result">
           <h3>{job.file.name}</h3>
           <p className="muted" style={{ margin: '0 0 10px' }}>
-            {fmtBytes(job.file.sizeBytes)} · {job.file.counts.sops} SOPs · {job.file.counts.versions} versions · {job.file.counts.steps} steps · {job.file.counts.kanbans} kanbans · {job.file.counts.media} images
+            {fmtBytes(job.file.sizeBytes)} · {job.file.counts.sops} SOPs · {job.file.counts.versions} versions · {job.file.counts.steps} steps · {job.file.counts.kanbans} kanbans · {job.file.counts.media} images{job.file.counts.users !== undefined ? ` · ${job.file.counts.users} users` : ''}
           </p>
           <button className="btn btn-primary" onClick={onDownload}>
             Download backup

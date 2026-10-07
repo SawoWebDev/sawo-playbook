@@ -252,7 +252,8 @@ describe('backup & restore', () => {
   });
 
   it('writes a manifest, every SOP, and every image with a matching checksum', async () => {
-    expect(source.job.file.counts).toEqual({ sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3 });
+    expect(source.job.file.counts).toEqual({ sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3, users: expect.any(Number) });
+    expect(source.job.file.counts.users).toBeGreaterThan(0);
     expect(source.job.warnings).toEqual([]);
     expect(source.job.percent).toBe(100);
 
