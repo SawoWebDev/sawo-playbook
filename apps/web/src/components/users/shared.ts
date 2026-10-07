@@ -15,7 +15,16 @@ export interface UserRow {
   approvalReadiness: { ready: boolean; issue: string | null };
 }
 
-export const STATUS_BADGE: Record<UserRow['status'], string> = {
+/** Colour class for each role's pill, used on every role label and role dropdown. Styles are in globals.css (`.role-pill--*`). */
+export const ROLE_PILL_CLASS: Record<Role, string> = {
+  ADMIN: 'role-pill--admin',
+  EDITOR: 'role-pill--editor',
+  OPERATOR: 'role-pill--viewer',
+  PRE_APPROVER: 'role-pill--pre-approver',
+  APPROVER: 'role-pill--approver',
+};
+
+export const STATUS_BADGE:Record<UserRow['status'], string> = {
   active: 'badge-green',
   invited: 'badge-blue',
   suspended: 'badge-amber',

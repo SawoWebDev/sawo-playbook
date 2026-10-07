@@ -14,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { orgIsUsable } from './org-status';
 import { AccessTokenPayload, AuthUser } from './auth-user';
 import { ALLOW_WHILE_PASSWORD_CHANGE_KEY, IS_PUBLIC_KEY, PERMISSION_KEY } from './decorators';
-import { effectivePermissions, Permission } from './permissions';
+import { Permission, userPermissions } from './permissions';
 
 /**
  * Global guard (§7.3 rules 1, 2, 7, 9):
@@ -91,7 +91,7 @@ export class AuthorizationGuard implements CanActivate {
       role: user.orgRole,
       email: user.email,
       name: user.name,
-      permissions: effectivePermissions(user.orgRole, user.organization.settings?.rolePermissions),
+      permissions: userPermissions(user.orgRole, user.organization.settings?.rolePermissions, user.extraPermissions),
       groupIds: user.groupMemberships.map((m) => m.groupId),
       passwordMustChange: user.passwordMustChange,
     };

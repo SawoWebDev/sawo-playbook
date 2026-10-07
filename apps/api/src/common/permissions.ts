@@ -166,6 +166,18 @@ export function effectivePermissions(role: OrgRole, stored: unknown): Set<Permis
   return granted;
 }
 
+/**
+ * What one person may do: their role's permissions plus any extra permissions an Admin granted to them. Extras that are
+ * not configurable (Admin-only or unknown) are ignored, so they can never be granted this way.
+ */
+export function userPermissions(role: OrgRole, stored: unknown, extra: readonly string[]): Set<Permission> {
+  const granted = effectivePermissions(role, stored);
+  if (isFullAccessRole(role)) return granted;
+  const configurable = new Set<string>(CONFIGURABLE_PERMISSIONS);
+  for (const p of extra) if (configurable.has(p)) granted.add(p as Permission);
+  return granted;
+}
+
 /** Sync check against the actor's already-loaded permission set (populated by AuthorizationGuard). */
 export function hasPermission(actor: { permissions: ReadonlySet<Permission> }, permission: Permission): boolean {
   return actor.permissions.has(permission);

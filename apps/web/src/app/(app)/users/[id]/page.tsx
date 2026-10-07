@@ -12,6 +12,7 @@ import { ASSIGNABLE_ROLES, hasPermission, roleLabel } from '@/lib/permissions';
 import { UserManagementTabs } from '@/components/UserManagementTabs';
 import { STATUS_BADGE, STATUS_LABEL, type UserRow } from '@/components/users/shared';
 import type { GroupOption } from '@/components/users/InviteDialog';
+import { actionLabel, areaName, permissionLabel } from '@/lib/permission-labels';
 
 interface UserDetail {
   id: string;
@@ -23,7 +24,15 @@ interface UserDetail {
   lastLoginAt: string | null;
   createdAt: string;
   groups: { id: string; name: string }[];
+  /** Permissions granted to this person on top of their role. */
+  extraPermissions: string[];
   approvalReadiness: { ready: boolean; issue: string | null };
+}
+
+/** The part of GET /roles this screen needs: each role's effective permissions and the keys an Admin may grant. */
+interface RolesMatrix {
+  roles: { role: Role; permissions: string[] }[];
+  configurable: string[];
 }
 
 type Pending = { kind: 'suspend' } | { kind: 'reactivate' } | { kind: 'remove' } | { kind: 'mfa' } | null;
@@ -47,6 +56,8 @@ export default function UserDetailPage() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('OPERATOR');
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [extras, setExtras] = useState<string[]>([]);
+  const [matrix, setMatrix] = useState<RolesMatrix | null>(null);
 
   const load = useCallback(async () => {
     const d = await api<UserDetail>(`/users/${id}`);
@@ -55,12 +66,14 @@ export default function UserDetailPage() {
     setEmail(d.email);
     setRole(d.orgRole);
     setGroupIds(d.groups.map((g) => g.id));
+    setExtras(d.extraPermissions ?? []);
   }, [id]);
 
   useEffect(() => {
     if (!canManage) return;
     load().catch((e) => setError(errorMessage(e)));
     if (canGroups) api<GroupOption[]>('/groups').then(setAllGroups).catch(() => undefined);
+    api<RolesMatrix>('/roles').then(setMatrix).catch(() => undefined);
   }, [canManage, canGroups, load]);
 
   /** Runs one change, shows the server's result and reloads. */
@@ -113,6 +126,13 @@ export default function UserDetailPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Extras as last saved on the server. Defaults to none if the response omits the field. */
+  const savedExtras = person?.extraPermissions ?? [];
+
+  const saveExtras = () => {
+    run(() => api(`/users/${id}/permissions`, { method: 'PATCH', body: { permissions: extras } }), 'Additional access saved. It applies from their next request.');
   };
 
   const confirmAndRun = () => {
@@ -246,11 +266,32 @@ export default function UserDetailPage() {
             </p>
           </section>
 
-          <section className="card" aria-label="Effective permissions">
-            <h3 style={{ marginTop: 0 }}>What this person can do</h3>
-            <p className="muted" style={{ margin: 0 }}>
-              Their permissions come from their role and the organisation&apos;s role settings. The API does not expose another person&apos;s effective permissions, so this screen does not list them.
-              See <Link href="/roles">Roles / Permissions</Link> for each role&apos;s permissions.
+          <section className="card" aria-label="Additional access">
+            <h3 style={{ marginTop: 0 }}>Additional access</h3>
+            {person.orgRole === 'ADMIN' ? (
+              <p className="muted" style={{ margin: 0 }}>Admins already hold every permission, so there is nothing to add.</p>
+            ) : !matrix ? (
+              <p className="muted" style={{ margin: 0 }}>Loading permissions…</p>
+            ) : (
+              <AdditionalAccess
+                roleName={roleLabel(person.orgRole)}
+                rolePermissions={matrix.roles.find((r) => r.role === person.orgRole)?.permissions ?? []}
+                configurable={matrix.configurable}
+                extras={extras}
+                onToggle={(key) => {
+                  if (!extras.includes(key)) {
+                    toast.info(`${permissionLabel(key)} is outside the ${roleLabel(person.orgRole)} role. It is granted to ${person.name} only.`);
+                  }
+                  setExtras((x) => (x.includes(key) ? x.filter((v) => v !== key) : [...x, key]));
+                }}
+                dirty={extras.length !== savedExtras.length || extras.some((p) => !savedExtras.includes(p))}
+                busy={busy}
+                onSave={saveExtras}
+              />
+            )}
+            <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+              These are added on top of the role and apply without signing the person out. Changing the role does not remove them.
+              Role defaults are on the <Link href="/roles">Roles / Permissions</Link> tab.
             </p>
           </section>
         </div>
@@ -280,6 +321,106 @@ export default function UserDetailPage() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+/**
+ * Toggles for the permissions an Admin may grant one person. Permissions the role already holds are shown on and locked,
+ * so a toggle here only ever adds access. The server refuses Admin-only keys and says so if one is sent.
+ */
+function AdditionalAccess({
+  roleName,
+  rolePermissions,
+  configurable,
+  extras,
+  onToggle,
+  dirty,
+  busy,
+  onSave,
+}: {
+  roleName: string;
+  rolePermissions: string[];
+  configurable: string[];
+  extras: string[];
+  onToggle: (key: string) => void;
+  dirty: boolean;
+  busy: boolean;
+  onSave: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const fromRole = new Set(rolePermissions);
+  const byArea = new Map<string, string[]>();
+  for (const key of [...configurable].sort()) {
+    const area = key.split('.')[0];
+    byArea.set(area, [...(byArea.get(area) ?? []), key]);
+  }
+
+  if (!open) {
+    return (
+      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <span className="muted" style={{ fontSize: 13 }}>
+          {extras.length === 0 ? 'No extra permissions for this person.' : `${extras.length} extra ${extras.length === 1 ? 'permission' : 'permissions'} granted to this person.`}
+        </span>
+        <button className="btn btn-sm" type="button" onClick={() => setOpen(true)} aria-expanded={false}>
+          <i className="fa-solid fa-user-shield" aria-hidden /> Show additional access
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 8 }}>
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+          Extra permissions for this person on top of their {roleName} role. For example, a Pre Approver can be given edit rights.
+        </p>
+        <button className="btn btn-sm" type="button" onClick={() => setOpen(false)} aria-expanded>
+          Hide additional access
+        </button>
+      </div>
+      <div className="rl-areas">
+        {[...byArea.entries()].map(([area, keys]) => {
+          const on = keys.filter((k) => fromRole.has(k) || extras.includes(k)).length;
+          return (
+            <fieldset key={area} className="rl-area">
+              <legend className="rl-area-head">
+                <span className="rl-area-name">{areaName(area)}</span>
+                <span className="muted rl-area-count">{on}/{keys.length}</span>
+              </legend>
+              <ul className="rl-perms">
+                {keys.map((k) => {
+                  const included = fromRole.has(k);
+                  const checked = included || extras.includes(k);
+                  const added = !included && extras.includes(k);
+                  return (
+                    <li key={k}>
+                      <label className={`rl-perm${added ? ' is-changed' : ''}`}>
+                        <span>
+                          {actionLabel(k)}
+                          {included && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>from {roleName}</span>}
+                        </span>
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="rl-switch"
+                          aria-label={`${areaName(area)} · ${actionLabel(k)}`}
+                          checked={checked}
+                          disabled={busy || included}
+                          onChange={() => onToggle(k)}
+                        />
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </fieldset>
+          );
+        })}
+      </div>
+      <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
+        <button className="btn btn-sm btn-primary" type="button" disabled={busy || !dirty} onClick={onSave}>Save access</button>
+      </div>
     </>
   );
 }

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma, SkillAssessment } from '@prisma/client';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
-import { effectivePermissions, Permission } from '../common/permissions';
+import { Permission, userPermissions } from '../common/permissions';
 import { RequestMeta } from '../common/decorators';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import { versionLabel } from '../sops/sop-status';
@@ -242,7 +242,7 @@ export class SkillsService {
     const [trainer, associate] = await Promise.all([this.findAssociate(actor, trainerId), this.findAssociate(actor, associateId)]);
     if (trainer.id === associate.id) throw new BadRequestException('A trainer cannot be assigned to themselves');
     const settings = await this.prisma.organizationSettings.findUnique({ where: { organizationId: actor.organizationId }, select: { rolePermissions: true } });
-    if (!effectivePermissions(trainer.orgRole, settings?.rolePermissions).has(Permission.SkillsUpdate)) {
+    if (!userPermissions(trainer.orgRole, settings?.rolePermissions, trainer.extraPermissions).has(Permission.SkillsUpdate)) {
       throw new BadRequestException('The selected user cannot record training assessments, so cannot be a trainer');
     }
     try {

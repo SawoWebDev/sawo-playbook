@@ -189,6 +189,8 @@ model User {
   orgRole             OrgRole    @map("org_role")
   siteScope           String[]   @default([]) @map("site_scope") // NOT enforced in MVP (§6.10)
   folderScope         String[]   @default([]) @map("folder_scope") // NOT enforced in MVP (§6.10)
+  /// Permissions granted to this person on top of their role. Configurable permissions only (see common/permissions.ts).
+  extraPermissions    String[]   @default([]) @map("extra_permissions")
   mfaEnabled          Boolean    @default(false) @map("mfa_enabled")
   /// AES-256-GCM encrypted TOTP secrets (key: MFA_ENCRYPTION_KEY)
   mfaSecretEnc        String?    @map("mfa_secret_enc")

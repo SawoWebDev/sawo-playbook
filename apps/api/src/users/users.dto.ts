@@ -49,6 +49,11 @@ export class ChangeRoleDto {
   @IsIn(ASSIGNABLE_ROLES) role!: OrgRole;
 }
 
+/** The full set of extra permissions for one person. Replaces the previous set. */
+export class SetExtraPermissionsDto {
+  @IsArray() @ArrayMaxSize(60) @IsString({ each: true }) @MaxLength(100, { each: true }) permissions!: string[];
+}
+
 export class AcceptInviteDto {
   @IsString() @MinLength(20) @MaxLength(200) token!: string;
   @IsString() @MinLength(1) @MaxLength(200) name!: string;

@@ -13,7 +13,7 @@ import { splitCsvLine } from '../common/csv';
 import { hashToken, TokenService } from '../auth/token.service';
 import { normaliseEmail } from '../auth/auth.service';
 import { AuthUser } from '../common/auth-user';
-import { ASSIGNABLE_ROLES, isFullAccessRole } from '../common/permissions';
+import { ASSIGNABLE_ROLES, CONFIGURABLE_PERMISSIONS, isFullAccessRole } from '../common/permissions';
 import { RequestMeta } from '../common/decorators';
 import { env } from '../config/env';
 import { MailService } from '../mail/mail.service';
@@ -75,8 +75,43 @@ export class UsersService {
       lastLoginAt: u.lastLoginAt,
       createdAt: u.createdAt,
       groups: groups.map((g) => g.group),
+      extraPermissions: [...u.extraPermissions].sort(),
       approvalReadiness: this.approvalReadiness(u),
     };
+  }
+
+  /**
+   * Replaces one person's extra permissions. Only configurable permissions can be granted, never Admin-only ones.
+   * Permissions are read on every request, so the change applies to the person's next request without signing them out.
+   */
+  async setExtraPermissions(actor: AuthUser, id: string, permissions: string[], meta: RequestMeta) {
+    const target = await this.findTarget(actor, id);
+    this.assertCanManage(actor, target);
+    if (isFullAccessRole(target.orgRole)) throw new BadRequestException('Admins already hold every permission');
+    if (target.status === 'removed') throw new BadRequestException('User has been removed');
+    const requested = [...new Set(permissions)].sort();
+    const allowed = new Set<string>(CONFIGURABLE_PERMISSIONS);
+    const rejected = requested.filter((p) => !allowed.has(p));
+    if (rejected.length) throw new BadRequestException(`These permissions cannot be granted to a person: ${rejected.join(', ')}`);
+    const before = [...target.extraPermissions].sort();
+    if (before.length === requested.length && before.every((p, i) => p === requested[i])) return this.get(actor, id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { extraPermissions: requested } });
+      await this.audit.record(
+        {
+          action: AuditAction.UserPermissionsChanged,
+          organizationId: actor.organizationId,
+          actorId: actor.id,
+          entityType: 'user',
+          entityId: id,
+          metadata: { before, after: requested, added: requested.filter((p) => !before.includes(p)), removed: before.filter((p) => !requested.includes(p)) },
+          ...meta,
+        },
+        tx,
+      );
+    });
+    return this.get(actor, id);
   }
 
   /** Pre Approvers and Approvers receive approval mail, so they need a deliverable address. */

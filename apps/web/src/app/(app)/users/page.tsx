@@ -11,7 +11,7 @@ import { UserManagementTabs } from '@/components/UserManagementTabs';
 import { Avatar, ROLE_ICON } from '@/components/users/Avatar';
 import { CreateUserDialog } from '@/components/users/CreateUserDialog';
 import { InviteDialog, type GroupOption } from '@/components/users/InviteDialog';
-import { STATUS_BADGE, STATUS_LABEL, type UserRow } from '@/components/users/shared';
+import { ROLE_PILL_CLASS, STATUS_BADGE, STATUS_LABEL, type UserRow } from '@/components/users/shared';
 
 interface InvitationRow {
   id: string;
@@ -241,7 +241,7 @@ export default function UsersPage() {
                       </td>
                       <td>
                         <select
-                          className="inline-select"
+                          className={`role-pill role-pill-select ${ROLE_PILL_CLASS[u.orgRole] ?? ''}`}
                           aria-label={`Role for ${u.name}`}
                           value={u.orgRole}
                           disabled={busy || u.status === 'removed'}

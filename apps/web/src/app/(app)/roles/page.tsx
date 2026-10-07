@@ -8,6 +8,7 @@ import { errorMessage, plural } from '@/lib/format';
 import { hasPermission, roleLabel } from '@/lib/permissions';
 import { UserManagementTabs } from '@/components/UserManagementTabs';
 import { ROLE_ICON } from '@/components/users/Avatar';
+import { actionLabel, areaName, permissionLabel } from '@/lib/permission-labels';
 
 interface RoleRow {
   role: Role;
@@ -24,21 +25,7 @@ interface RolesResponse {
   defaults: Partial<Record<Role, string[]>>;
 }
 
-const AREA_NAME: Record<string, string> = { kanban: 'Kanbans', sop: 'STD OPS', org: 'Organisation', skills: 'Skills', analytics: 'Analytics', audit: 'Audit' };
 const AREA_ICON: Record<string, string> = { kanban: 'fa-table-columns', sop: 'fa-file-lines', skills: 'fa-certificate', analytics: 'fa-chart-line', audit: 'fa-clipboard-list', org: 'fa-building', users: 'fa-users', groups: 'fa-user-group', roles: 'fa-shield-halved' };
-
-const areaName = (area: string) => AREA_NAME[area] ?? area.charAt(0).toUpperCase() + area.slice(1);
-
-/** The action part of a permission key, as words. Wording only; the set of permissions comes from the API. */
-function actionLabel(key: string): string {
-  const action = key.split('.').slice(1).join(' ').replace(/_/g, ' ');
-  return action.charAt(0).toUpperCase() + action.slice(1);
-}
-
-/** Display text for a permission key, with its area. */
-function permissionLabel(key: string): string {
-  return `${areaName(key.split('.')[0])} · ${actionLabel(key)}`;
-}
 
 function sameSet(a: string[], b: string[]): boolean {
   const x = [...a].sort();

@@ -3,7 +3,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { AuthUser } from '../common/auth-user';
 import { CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
-import { BulkInviteDto, ChangeRoleDto, CreateUserDto, InviteDto, UpdateUserDto } from './users.dto';
+import { BulkInviteDto, ChangeRoleDto, CreateUserDto, InviteDto, SetExtraPermissionsDto, UpdateUserDto } from './users.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -57,6 +57,18 @@ export class UsersController {
     @ReqMeta() meta: RequestMeta,
   ) {
     return this.users.changeRole(actor, id, dto.role, meta);
+  }
+
+  /** Extra permissions on top of the role. Same gate as role changes: only Admins hold users.change_role. */
+  @Patch(':id/permissions')
+  @RequirePermission(Permission.UsersChangeRole)
+  setExtraPermissions(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetExtraPermissionsDto,
+    @ReqMeta() meta: RequestMeta,
+  ) {
+    return this.users.setExtraPermissions(actor, id, dto.permissions, meta);
   }
 
   @Post(':id/suspend')

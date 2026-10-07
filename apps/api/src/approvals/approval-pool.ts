@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { OrgRole } from '@prisma/client';
 import { AuditAction, AuditService } from '../audit/audit.service';
-import { effectivePermissions, Permission } from '../common/permissions';
+import { Permission, userPermissions } from '../common/permissions';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -33,11 +33,11 @@ export class ApprovalPool {
     const settings = await this.prisma.organizationSettings.findUnique({ where: { organizationId }, select: { rolePermissions: true } });
     const rows = await this.prisma.user.findMany({
       where: { organizationId, status: 'active', orgRole: { in: WORKING_ROLES }, ...(excludeUserId ? { id: { not: excludeUserId } } : {}) },
-      select: { id: true, name: true, email: true, orgRole: true, groupMemberships: { select: { groupId: true } } },
+      select: { id: true, name: true, email: true, orgRole: true, extraPermissions: true, groupMemberships: { select: { groupId: true } } },
     });
     const scope = new Set(routingGroupIds);
     return rows
-      .filter((u) => effectivePermissions(u.orgRole, settings?.rolePermissions).has(permission))
+      .filter((u) => userPermissions(u.orgRole, settings?.rolePermissions, u.extraPermissions).has(permission))
       .filter((u) => scope.size === 0 || u.groupMemberships.some((m) => scope.has(m.groupId)))
       .map((u) => ({ id: u.id, name: u.name, email: u.email, orgRole: u.orgRole, groupIds: u.groupMemberships.map((m) => m.groupId) }));
   }

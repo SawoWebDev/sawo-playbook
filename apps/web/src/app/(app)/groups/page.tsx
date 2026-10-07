@@ -8,7 +8,7 @@ import { errorMessage, plural } from '@/lib/format';
 import { ASSIGNABLE_ROLES, hasPermission, roleLabel } from '@/lib/permissions';
 import { UserManagementTabs } from '@/components/UserManagementTabs';
 import { Avatar } from '@/components/users/Avatar';
-import { STATUS_BADGE, STATUS_LABEL, type UserRow } from '@/components/users/shared';
+import { ROLE_PILL_CLASS, STATUS_BADGE, STATUS_LABEL, type UserRow } from '@/components/users/shared';
 
 interface GroupRow {
   id: string;
@@ -283,7 +283,7 @@ export default function GroupsPage() {
                   <span className="muted">No members yet</span>
                 ) : (
                   counts.map(([r, n]) => (
-                    <span key={r} className="grp-chip">
+                    <span key={r} className={`role-pill ${ROLE_PILL_CLASS[r]}`}>
                       {n} {roleLabel(r)}
                     </span>
                   ))
@@ -349,7 +349,7 @@ export default function GroupsPage() {
                           <div className="muted grp-member-email">{m.email}</div>
                         </div>
                         <select
-                          className="inline-select"
+                          className={`role-pill role-pill-select ${ROLE_PILL_CLASS[m.orgRole as Role] ?? ''}`}
                           aria-label={`Role for ${m.name}`}
                           value={m.orgRole}
                           disabled={busy}
@@ -398,7 +398,7 @@ export default function GroupsPage() {
                               <span className="grp-member-name">{u.name}</span>
                               <span className="muted grp-member-email">{u.email}</span>
                             </span>
-                            <span className="grp-chip">{roleLabel(u.orgRole)}</span>
+                            <span className={`role-pill ${ROLE_PILL_CLASS[u.orgRole as Role] ?? ''}`}>{roleLabel(u.orgRole)}</span>
                           </label>
                         </li>
                       );

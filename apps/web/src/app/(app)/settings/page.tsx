@@ -24,9 +24,16 @@ export default function SettingsPage() {
   const toast = useToast();
   const [confirmName, setConfirmName] = useState('');
   const [password, setPassword] = useState('');
+  // Last saved values, so the page can tell when there are unsaved changes.
+  const [baseline, setBaseline] = useState<OrgInfo['settings'] | null>(null);
 
   useEffect(() => {
-    api<OrgInfo>('/organization').then(setOrg).catch((e) => toast.error(errorMessage(e)));
+    api<OrgInfo>('/organization')
+      .then((o) => {
+        setOrg(o);
+        setBaseline(o.settings);
+      })
+      .catch((e) => toast.error(errorMessage(e)));
   }, []);
 
   if (!org) return <Loading />;
@@ -35,7 +42,9 @@ export default function SettingsPage() {
     e.preventDefault();
     try {
       const { approvalRequired, approvalQuorum, allowSelfApproval, publicSopViewing } = org!.settings;
-      setOrg(await api<OrgInfo>('/organization/settings', { method: 'PATCH', body: { approvalRequired, approvalQuorum, allowSelfApproval, publicSopViewing } }));
+      const saved = await api<OrgInfo>('/organization/settings', { method: 'PATCH', body: { approvalRequired, approvalQuorum, allowSelfApproval, publicSopViewing } });
+      setOrg(saved);
+      setBaseline(saved.settings);
       toast.success('Settings saved.');
     } catch (err) {
       toast.error(errorMessage(err));
@@ -47,6 +56,11 @@ export default function SettingsPage() {
 
   const st = org.settings;
   const statusLabel = org.status === 'pending_deletion' ? 'Deletion scheduled' : org.status.charAt(0).toUpperCase() + org.status.slice(1);
+  const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
+  const dirty = baseline !== null && (['approvalRequired', 'approvalQuorum', 'allowSelfApproval', 'publicSopViewing'] as const).some((k) => st[k] !== baseline[k]);
+  const approvalSummary = st.approvalRequired
+    ? `Right now, a new SOP version needs approval from ${people(st.approvalQuorum)} before it goes live. ${st.allowSelfApproval ? 'Its author may approve it too.' : 'Its author cannot approve it.'}`
+    : 'Right now, editors publish SOP changes straight from the editor. No approval step.';
 
   return (
     <>
@@ -63,22 +77,38 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <div className="kpi-grid">
+      <div className="kpi-grid org-kpis">
         <div className={`kpi${st.approvalRequired ? ' kpi-good' : ''}`}>
           <span className="kpi-icon"><i className="fa-solid fa-stamp" aria-hidden /></span>
-          <span className="kpi-text"><span className="kpi-value">{st.approvalRequired ? 'On' : 'Off'}</span><span className="kpi-label">Approval before publishing</span></span>
+          <span className="kpi-text">
+            <span className="kpi-label">Approval before publishing</span>
+            <span className="kpi-value">{st.approvalRequired ? 'On' : 'Off'}</span>
+            <span className="kpi-hint">{st.approvalRequired ? 'New versions need sign-off' : 'Editors publish directly'}</span>
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-icon"><i className="fa-solid fa-users-viewfinder" aria-hidden /></span>
-          <span className="kpi-text"><span className="kpi-value">{st.approvalRequired ? st.approvalQuorum : '—'}</span><span className="kpi-label">Approvers needed</span></span>
+          <span className="kpi-text">
+            <span className="kpi-label">Approvers needed</span>
+            <span className="kpi-value">{st.approvalRequired ? people(st.approvalQuorum) : 'None'}</span>
+            <span className="kpi-hint">{st.approvalRequired ? 'Different people, before going live' : 'Approval is off'}</span>
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-icon"><i className="fa-solid fa-user-check" aria-hidden /></span>
-          <span className="kpi-text"><span className="kpi-value">{st.allowSelfApproval ? 'Allowed' : 'Not allowed'}</span><span className="kpi-label">Self-approval</span></span>
+          <span className="kpi-text">
+            <span className="kpi-label">Authors approving their own work</span>
+            <span className="kpi-value">{st.approvalRequired ? (st.allowSelfApproval ? 'Allowed' : 'Not allowed') : '—'}</span>
+            <span className="kpi-hint">{st.approvalRequired ? 'Self-approval setting' : 'Only applies when approval is on'}</span>
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-icon"><i className="fa-solid fa-qrcode" aria-hidden /></span>
-          <span className="kpi-text"><span className="kpi-value">{st.publicSopViewing ? 'Public' : 'Signed-in only'}</span><span className="kpi-label">QR viewing</span></span>
+          <span className="kpi-text">
+            <span className="kpi-label">QR code access</span>
+            <span className="kpi-value">{st.publicSopViewing ? 'Anyone' : 'Sign-in only'}</span>
+            <span className="kpi-hint">{st.publicSopViewing ? 'Published SOPs open without signing in' : 'Viewers must sign in first'}</span>
+          </span>
         </div>
       </div>
 
@@ -92,12 +122,15 @@ export default function SettingsPage() {
                 <p className="muted">How new SOP versions reach operators.</p>
               </div>
             </div>
+            <p className="org-summary">
+              <i className="fa-solid fa-circle-info" aria-hidden /> {approvalSummary}
+            </p>
 
             <div className="org-setting">
               <div className="org-setting-text">
                 <b>Require approval before publishing</b>
                 <span className="muted">
-                  Off: “Finish &amp; Save” in the editor publishes the SOP immediately. On: new versions must first be approved by Admins / Editors (other than the person who submitted it).
+                  Off: editors publish straight from the SOP editor. On: each new version must be approved by an Admin or Editor who is not its author.
                 </span>
               </div>
               <input type="checkbox" role="switch" className="switch" aria-label="Require approval before publishing" checked={st.approvalRequired} onChange={(e) => setSetting('approvalRequired', e.target.checked)} />
@@ -107,15 +140,15 @@ export default function SettingsPage() {
               <>
                 <div className="org-setting">
                   <div className="org-setting-text">
-                    <label htmlFor="quorum"><b>Approval quorum</b></label>
-                    <span className="muted">Distinct approvers needed before a version can be published.</span>
+                    <label htmlFor="quorum"><b>Approvers needed</b></label>
+                    <span className="muted">How many different people must approve a version before it goes live (1 to 20).</span>
                   </div>
                   <input id="quorum" className="org-number" type="number" min={1} max={20} value={st.approvalQuorum} onChange={(e) => setSetting('approvalQuorum', Number(e.target.value))} />
                 </div>
                 <div className="org-setting">
                   <div className="org-setting-text">
                     <b>Allow self-approval</b>
-                    <span className="muted">The person who submitted a version may also approve it.</span>
+                    <span className="muted">Off: the person who wrote a version cannot approve it. On: they may approve their own version.</span>
                   </div>
                   <input type="checkbox" role="switch" className="switch" aria-label="Allow self-approval" checked={st.allowSelfApproval} onChange={(e) => setSetting('allowSelfApproval', e.target.checked)} />
                 </div>
@@ -125,13 +158,16 @@ export default function SettingsPage() {
             <div className="org-setting">
               <div className="org-setting-text">
                 <b>Public QR viewing</b>
-                <span className="muted">Anyone with a QR code can view published SOPs without signing in.</span>
+                <span className="muted">On: anyone who scans a SOP's QR code can read it without signing in. Off: viewers must sign in first.</span>
               </div>
               <input type="checkbox" role="switch" className="switch" aria-label="Allow viewing published SOPs via QR without signing in" checked={st.publicSopViewing} onChange={(e) => setSetting('publicSopViewing', e.target.checked)} />
             </div>
 
-            <div className="pf-actions">
-              <button className="btn btn-primary" type="submit">
+            <div className="pf-actions org-savebar">
+              <span className={`org-dirty${dirty ? ' is-dirty' : ''}`} role="status">
+                {dirty ? 'You have unsaved changes.' : 'All changes saved.'}
+              </span>
+              <button className="btn btn-primary" type="submit" disabled={!dirty}>
                 <i className="fa-solid fa-floppy-disk" aria-hidden /> Save settings
               </button>
             </div>
