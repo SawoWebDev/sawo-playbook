@@ -62,7 +62,7 @@ function Kanbans() {
   const [inbox, setInbox] = useState<KanbanInbox | null>(null);
   const [q, setQ] = useState(() => ({
     search: initialSearch,
-    sort: 'createdAt', // newest first, like gembadocs
+    sort: 'createdAt', // newest first, like the original system
     dir: 'desc',
   }));
   const [flt, setFlt] = useState<Filters>(NO_FILTER);

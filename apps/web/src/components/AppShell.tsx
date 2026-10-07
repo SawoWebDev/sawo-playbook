@@ -50,7 +50,10 @@ function GlobalSearch() {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, realUser, previewRole, logout } = useAuth();
+  const { user, realUser, previewRole, logout, impersonatedBy, stopImpersonation } = useAuth();
+  const [leavingImp, setLeavingImp] = useState(false);
+  // The item just clicked. It shows as active straight away, before the next page has loaded.
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -105,6 +108,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setOpen(false);
     setBellOpen(false);
+    setPendingHref(null);
   }, [pathname]);
 
   // Lock page scroll while the mobile drawer is open.
@@ -195,8 +199,31 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 
+  const backToAdmin = async () => {
+    setLeavingImp(true);
+    try {
+      await stopImpersonation();
+      router.push('/users');
+    } finally {
+      setLeavingImp(false);
+    }
+  };
+
   return (
-    <div className="admin-shell">
+    <>
+    {pendingHref && <div className="nav-progress" role="progressbar" aria-label="Loading page" />}
+    {impersonatedBy && user && (
+      <div className="imp-banner" role="status">
+        <i className="fa-solid fa-user-secret" aria-hidden />
+        <span>
+          Viewing as <strong>{user.name}</strong> ({roleLabel(user.role)}). You are signed in as them for testing, so you see exactly what they see.
+        </span>
+        <button type="button" className="imp-banner-btn" onClick={() => void backToAdmin()} disabled={leavingImp}>
+          <i className="fa-solid fa-arrow-left" aria-hidden /> Back to {impersonatedBy.name}
+        </button>
+      </div>
+    )}
+    <div className="admin-shell" style={impersonatedBy ? { height: 'calc(100vh - 44px)', marginTop: 44 } : undefined}>
       {/* Mobile top bar: the page title and the bell. */}
       <header className="admin-topbar">
         <button type="button" className="admin-topbar-hamburger" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Close navigation' : 'Open navigation'}>
@@ -234,8 +261,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div key={section.key}>
                 <div className="sidebar-nav-section-label">{section.label}</div>
                 {items.map((item) => (
-                  <Link key={item.href} href={item.href} className={isNavActive(pathname, item.href) ? 'active' : ''} onClick={close} title={item.label}>
-                    <i className={`fa-solid ${item.icon} nav-icon`} aria-hidden />
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={pendingHref ? (pendingHref === item.href ? 'active is-pending' : '') : isNavActive(pathname, item.href) ? 'active' : ''}
+                    onClick={() => {
+                      if (!isNavActive(pathname, item.href)) setPendingHref(item.href);
+                      close();
+                    }}
+                    title={item.label}
+                    aria-busy={pendingHref === item.href}
+                  >
+                    <i className={`fa-solid ${pendingHref === item.href ? 'fa-circle-notch fa-spin' : item.icon} nav-icon`} aria-hidden />
                     <span className="sidebar-nav-label">{item.label}</span>
                   </Link>
                 ))}
@@ -302,5 +339,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </main>
     </div>
+    </>
   );
 }

@@ -16,6 +16,8 @@ export interface AuthUser {
   groupIds: string[];
   /** True until the user sets their own password after an Admin created the account. */
   passwordMustChange: boolean;
+  /** Set when an Admin is signed in as this user via "Impersonate". The Admin's id and name; absent otherwise. */
+  impersonatedBy?: { id: string; name: string };
 }
 
 export interface AccessTokenPayload {
@@ -24,4 +26,6 @@ export interface AccessTokenPayload {
   role: OrgRole;
   /** User.tokenVersion at issuance; mismatch ⇒ token revoked. */
   tv: number;
+  /** Id of the Admin who started an impersonation session. Only present on impersonation tokens. */
+  imp?: string;
 }

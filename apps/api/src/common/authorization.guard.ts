@@ -13,7 +13,7 @@ import { env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { orgIsUsable } from './org-status';
 import { AccessTokenPayload, AuthUser } from './auth-user';
-import { ALLOW_WHILE_PASSWORD_CHANGE_KEY, IS_PUBLIC_KEY, PERMISSION_KEY } from './decorators';
+import { ALLOW_WHILE_PASSWORD_CHANGE_KEY, BLOCK_WHILE_IMPERSONATING_KEY, IS_PUBLIC_KEY, PERMISSION_KEY } from './decorators';
 import { Permission, userPermissions } from './permissions';
 
 /**
@@ -47,6 +47,9 @@ export class AuthorizationGuard implements CanActivate {
     if (!user.permissions.has(permission)) {
       throw new ForbiddenException('Insufficient permission');
     }
+    if (user.impersonatedBy && this.reflector.getAllAndOverride<boolean>(BLOCK_WHILE_IMPERSONATING_KEY, targets)) {
+      throw new ForbiddenException('Not available while impersonating - go back to your admin account first');
+    }
     // A temporary password must be replaced before anything else is usable. The identity read and the change itself stay open.
     const allowWhilePending = this.reflector.getAllAndOverride<boolean>(ALLOW_WHILE_PASSWORD_CHANGE_KEY, targets);
     if (user.passwordMustChange && !allowWhilePending) {
@@ -77,12 +80,29 @@ export class AuthorizationGuard implements CanActivate {
     });
     if (
       !user ||
-      user.status !== 'active' ||
+      // An Admin may impersonate someone who has not accepted their invitation yet, so invited accounts pass on an impersonation token.
+      (user.status !== 'active' && !(payload.imp && user.status === 'invited')) ||
       user.tokenVersion !== payload.tv ||
       user.organizationId !== payload.org ||
       !orgIsUsable(user.organization.status)
     ) {
       throw new UnauthorizedException();
+    }
+    // An impersonation token is only honoured while the Admin who started it is still an active, users.manage-capable
+    // user of the same organization, so suspending or demoting them ends every session they opened.
+    let impersonatedBy: AuthUser['impersonatedBy'];
+    if (payload.imp) {
+      const admin = await this.prisma.user.findUnique({
+        where: { id: payload.imp },
+        include: { organization: { select: { settings: { select: { rolePermissions: true } } } } },
+      });
+      const adminCan =
+        !!admin &&
+        admin.status === 'active' &&
+        admin.organizationId === user.organizationId &&
+        userPermissions(admin.orgRole, admin.organization.settings?.rolePermissions, admin.extraPermissions).has(Permission.UsersManage);
+      if (!admin || !adminCan) throw new UnauthorizedException();
+      impersonatedBy = { id: admin.id, name: admin.name };
     }
     // Permissions are read from the DB on every request, so an admin's change takes effect immediately.
     return {
@@ -94,6 +114,7 @@ export class AuthorizationGuard implements CanActivate {
       permissions: userPermissions(user.orgRole, user.organization.settings?.rolePermissions, user.extraPermissions),
       groupIds: user.groupMemberships.map((m) => m.groupId),
       passwordMustChange: user.passwordMustChange,
+      ...(impersonatedBy ? { impersonatedBy } : {}),
     };
   }
 }

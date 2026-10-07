@@ -11,11 +11,11 @@ mkdir -p "$OUT"
 DC="docker compose -f $COMPOSE_FILE"
 
 echo "→ Postgres dump"
-$DC exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d gembadocs --format=custom --no-owner' > "$OUT/gembadocs.dump"
+$DC exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d gembadocs --format=custom --no-owner' > "$OUT/playbook.dump"
 
 echo "→ MinIO objects"
 MINIO_CID="$($DC ps -q minio)"
 docker run --rm --volumes-from "$MINIO_CID" alpine:3 tar -C /data -cf - . > "$OUT/minio-data.tar"
 
-( cd "$OUT" && sha256sum gembadocs.dump minio-data.tar > SHA256SUMS )
+( cd "$OUT" && sha256sum playbook.dump minio-data.tar > SHA256SUMS )
 echo "Backup written to $OUT"

@@ -87,7 +87,7 @@ async function uploadMedia(accessToken, filePath) {
 
 (async () => {
   if (!APP_EMAIL || !APP_PASSWORD) {
-    console.error('Set APP_EMAIL and APP_PASSWORD in scripts/gemba-import/.env (the account you created at localhost:3000)');
+    console.error('Set APP_EMAIL and APP_PASSWORD in scripts/playbook-import/.env (the account you created at localhost:3000)');
     process.exit(1);
   }
 

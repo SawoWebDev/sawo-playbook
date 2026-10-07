@@ -259,7 +259,7 @@ describe('backup & restore', () => {
 
     const zip = await openZip(source.zip);
     const manifest = await zip.readJson<any>('manifest.json', 1e6);
-    expect(manifest).toMatchObject({ format: 'gembadocs-sop-backup', formatVersion: 2, counts: { sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3 }, files: { kanbans: 'kanbans.json' } });
+    expect(manifest).toMatchObject({ format: 'sawo-playbook-sop-backup', formatVersion: 2, counts: { sops: 4, versions: 5, steps: 7, kanbans: 2, media: 3 }, files: { kanbans: 'kanbans.json' } });
     expect(manifest.files.sops).toHaveLength(4);
     const media = await zip.readJson<any[]>('media.json', 1e6);
     expect(media.map((m) => m.originalFilename).sort()).toEqual(['one.png', 'three.png', 'two.png']);

@@ -27,7 +27,7 @@ export interface MfaChallenge {
   mfaToken: string;
 }
 
-const MFA_AUDIENCE = 'gemba-mfa';
+const MFA_AUDIENCE = 'playbook-mfa';
 
 export interface PublicUser {
   id: string;
@@ -43,7 +43,7 @@ export function toPublicUser(u: User): PublicUser {
 }
 
 // Used to equalise timing when the email does not exist.
-const DUMMY_HASH_PROMISE = argon2.hash('gemba-dummy-password-for-timing');
+const DUMMY_HASH_PROMISE = argon2.hash('playbook-dummy-password-for-timing');
 
 export function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();

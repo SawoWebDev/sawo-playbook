@@ -8,7 +8,7 @@ import { env } from '../config/env';
 import { LoginDto, LoginMfaDto, SignupDto } from './auth.dto';
 import { AuthService, SessionTokens } from './auth.service';
 
-export const REFRESH_COOKIE = 'gemba_rt';
+export const REFRESH_COOKIE = 'playbook_rt';
 /** Cookie is scoped to the refresh endpoint only (§7.4). */
 export const REFRESH_COOKIE_PATH = '/api/auth/refresh';
 
@@ -103,6 +103,7 @@ export class AuthController {
       permissions: [...user.permissions].filter((p) => p !== Permission.Authenticated).sort(),
       groupIds: [...user.groupIds].sort(),
       passwordMustChange: user.passwordMustChange,
+      impersonatedBy: user.impersonatedBy ?? null,
     };
   }
 }

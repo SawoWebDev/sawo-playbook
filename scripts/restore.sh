@@ -7,6 +7,8 @@ export MSYS_NO_PATHCONV=1  # Git Bash on Windows: do not rewrite container paths
 DIR="$1"
 COMPOSE_FILE="${2:-docker-compose.yml}"
 DC="docker compose -f $COMPOSE_FILE"
+# Backups made before the rename call the dump gembadocs.dump
+DUMP="playbook.dump"; [ -f "$DIR/$DUMP" ] || DUMP="gembadocs.dump"
 ( cd "$DIR" && sha256sum -c SHA256SUMS )
 
 echo "→ Stopping app containers"
@@ -14,7 +16,7 @@ $DC stop api worker web || true
 
 echo "→ Restoring Postgres"
 $DC exec -T db sh -c 'dropdb -U "$POSTGRES_USER" --if-exists gembadocs && createdb -U "$POSTGRES_USER" gembadocs'
-$DC exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d gembadocs --no-owner' < "$DIR/gembadocs.dump"
+$DC exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d gembadocs --no-owner' < "$DIR/$DUMP"
 
 echo "→ Restoring MinIO objects"
 MINIO_CID="$($DC ps -q minio)"

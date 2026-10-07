@@ -16,6 +16,10 @@ interface AuthState {
   login: typeof client.login;
   signup: typeof client.signup;
   logout: typeof client.logout;
+  /** The Admin who is signed in as this user right now, or null. */
+  impersonatedBy: { id: string; name: string } | null;
+  startImpersonation: typeof client.startImpersonation;
+  stopImpersonation: typeof client.stopImpersonation;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -42,8 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .then((ctx) => setUser((prev) => (prev && prev.id === u.id ? { ...prev, ...ctx } : prev)))
         .catch(() => undefined);
     });
-    // Restore the session from the HttpOnly refresh cookie on page load.
-    client.refreshSession().finally(() => setLoading(false));
+    // Restore the session on page load: an impersonation kept for this tab, else the HttpOnly refresh cookie.
+    client.restoreSession().finally(() => setLoading(false));
     return () => {
       off();
     };
@@ -66,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user: effectiveUser, realUser: user, previewRole, loading, login: client.login, signup: client.signup, logout: client.logout }}
+      value={{ user: effectiveUser, realUser: user, previewRole, loading, login: client.login, signup: client.signup, logout: client.logout, impersonatedBy: user?.impersonatedBy ?? null, startImpersonation: client.startImpersonation, stopImpersonation: client.stopImpersonation }}
     >
       {children}
     </AuthContext.Provider>

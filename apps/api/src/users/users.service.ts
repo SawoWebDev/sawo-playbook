@@ -10,8 +10,8 @@ import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { splitCsvLine } from '../common/csv';
-import { hashToken, TokenService } from '../auth/token.service';
-import { normaliseEmail } from '../auth/auth.service';
+import { hashToken, IMPERSONATION_TTL_SECONDS, TokenService } from '../auth/token.service';
+import { normaliseEmail, toPublicUser } from '../auth/auth.service';
 import { AuthUser } from '../common/auth-user';
 import { ASSIGNABLE_ROLES, CONFIGURABLE_PERMISSIONS, isFullAccessRole } from '../common/permissions';
 import { RequestMeta } from '../common/decorators';
@@ -46,6 +46,41 @@ export class UsersService {
     private readonly audit: AuditService,
     private readonly mail: MailService,
   ) {}
+
+  /**
+   * Signs the Admin in as `id` for testing: the result is an access token for that person (no refresh token, one hour),
+   * so what the Admin sees and can do is exactly what that person sees and can do. Admins cannot be impersonated.
+   */
+  async impersonate(actor: AuthUser, id: string, meta: RequestMeta) {
+    if (actor.impersonatedBy) throw new ForbiddenException('Go back to your admin account before impersonating someone else');
+    const target = await this.findTarget(actor, id);
+    if (target.id === actor.id) throw new BadRequestException('You are already signed in as yourself');
+    if (isFullAccessRole(target.orgRole)) throw new ForbiddenException('Admin accounts cannot be impersonated');
+    if (target.status !== 'active' && target.status !== 'invited') throw new BadRequestException('Suspended or removed users cannot be impersonated');
+    await this.audit.record({
+      action: AuditAction.UserImpersonationStarted,
+      organizationId: actor.organizationId,
+      actorId: actor.id,
+      entityType: 'user',
+      entityId: target.id,
+      metadata: { targetEmail: target.email },
+      ...meta,
+    });
+    return { accessToken: this.tokens.signImpersonationToken(target, actor.id), expiresIn: IMPERSONATION_TTL_SECONDS, user: toPublicUser(target) };
+  }
+
+  /** Records the end of an impersonation session. The Admin's own session was never touched, so nothing else changes. */
+  async endImpersonation(actor: AuthUser, meta: RequestMeta) {
+    if (!actor.impersonatedBy) return;
+    await this.audit.record({
+      action: AuditAction.UserImpersonationEnded,
+      organizationId: actor.organizationId,
+      actorId: actor.impersonatedBy.id,
+      entityType: 'user',
+      entityId: actor.id,
+      ...meta,
+    });
+  }
 
   async list(actor: AuthUser) {
     const rows = await this.prisma.user.findMany({

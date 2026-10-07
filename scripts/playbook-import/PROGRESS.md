@@ -1,4 +1,4 @@
-# Gemba Docs → sawo-gemba-docs SOP migration — progress
+# Legacy GembaDocs → sawo-playbook SOP migration — progress
 
 Goal: pull all 121 SOPs (metadata, steps, images) from the legacy gembadocs.com
 account and recreate them in this app at http://localhost:3000.
@@ -8,7 +8,7 @@ account and recreate them in this app at http://localhost:3000.
 | Stage | Done | Total | Notes |
 |---|---|---|---|
 | Pulled from gembadocs.com (JSON + images in `output/`) | 121 | 121 | complete, 0 errors, 0 slug collisions |
-| Pushed into sawo-gemba-docs app (verified non-empty or legitimately-empty) | 121 | 121 | complete |
+| Pushed into sawo-playbook app (verified non-empty or legitimately-empty) | 121 | 121 | complete |
 | Field fidelity (referenceNo, Created By, display order) | done | — | see below |
 | Publish status (Draft vs Published matching gembadocs.com) | done | — | see below |
 | Content verification (`node verify-content.js`) | 121 | 121 | 732 steps / 725 images checked, 0 problems (2026-10-05). Compares app vs. pulled JSON: step count, full step text (HTML entities decoded — the app stores `&` as `&amp;`), image presence per step, planned time. Paced for the 120 req/min throttle; waits out 429s. |
@@ -130,7 +130,7 @@ rerun the fidelity script if that matters again.
 After each push batch, spot-check for empty (0-step) SOPs — don't assume "created" means "complete":
 
 ```js
-// quick inline check, run from scripts/gemba-import/
+// quick inline check, run from scripts/playbook-import/
 node -e "
 require('dotenv').config();
 (async () => {

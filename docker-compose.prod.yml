@@ -1,7 +1,7 @@
 # Production-style stack (3 containers): compiled images, no bind mounts, DB not exposed.
 #   cp .env.example .env   # set real secrets first
 #   docker compose -f docker-compose.prod.yml up -d --build
-name: gembadocs-prod
+name: sawo-playbook-prod
 
 x-api-env: &api-env
   NODE_ENV: production
@@ -52,8 +52,11 @@ services:
     environment:
       API_INTERNAL_URL: http://api:4000
     depends_on: [api]
-    ports: ["${GEMBA_WEB_PORT:-3000}:3000"]
+    ports: ["${PLAYBOOK_WEB_PORT:-3000}:3000"]
 
 volumes:
+  # Pinned to the volume names created under the old compose project name so existing data is kept.
   pgdata:
+    name: gembadocs-prod_pgdata
   uploads:
+    name: gembadocs-prod_uploads

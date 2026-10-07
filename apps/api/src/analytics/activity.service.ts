@@ -44,7 +44,7 @@ export class ActivityService {
   }
 }
 
-export const ACTIVITY_KEY = 'gemba:activity';
+export const ACTIVITY_KEY = 'playbook:activity';
 
 export interface ActivitySpec {
   event: string;

@@ -3,9 +3,14 @@ import type { Request } from 'express';
 import { AuthUser } from './auth-user';
 import { Permission } from './permissions';
 
-export const IS_PUBLIC_KEY = 'gemba:isPublic';
-export const PERMISSION_KEY = 'gemba:permission';
-export const ALLOW_WHILE_PASSWORD_CHANGE_KEY = 'gemba:allowWhilePasswordChange';
+export const IS_PUBLIC_KEY = 'playbook:isPublic';
+export const PERMISSION_KEY = 'playbook:permission';
+export const ALLOW_WHILE_PASSWORD_CHANGE_KEY = 'playbook:allowWhilePasswordChange';
+
+export const BLOCK_WHILE_IMPERSONATING_KEY = 'playbook:blockWhileImpersonating';
+
+/** Route cannot be used from an impersonation session (credential changes, starting another impersonation). */
+export const BlockWhileImpersonating = () => SetMetadata(BLOCK_WHILE_IMPERSONATING_KEY, true);
 
 /** Route requires no authentication. Must be declared explicitly. */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);

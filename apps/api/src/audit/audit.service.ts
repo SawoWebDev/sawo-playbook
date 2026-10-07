@@ -21,6 +21,8 @@ export const AuditAction = {
   UserInviteAccepted: 'user.invite.accepted',
   UserInviteRevoked: 'user.invite.revoked',
   UserRoleChanged: 'user.role.changed',
+  UserImpersonationStarted: 'user.impersonation.started',
+  UserImpersonationEnded: 'user.impersonation.ended',
   UserPermissionsChanged: 'user.permissions.changed',
   UserSuspended: 'user.suspended',
   UserReactivated: 'user.reactivated',

@@ -3,14 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 
-const BASE_URL = process.env.GEMBA_BASE_URL || 'https://gembadocs.com';
-const EMAIL = process.env.GEMBA_EMAIL;
-const PASSWORD = process.env.GEMBA_PASSWORD;
+const BASE_URL = process.env.SOURCE_BASE_URL || 'https://gembadocs.com';
+const EMAIL = process.env.SOURCE_EMAIL;
+const PASSWORD = process.env.SOURCE_PASSWORD;
 const HEADLESS = (process.env.HEADLESS ?? 'true') !== 'false';
 
 function assertCreds() {
   if (!EMAIL || !PASSWORD) {
-    throw new Error('Set GEMBA_EMAIL and GEMBA_PASSWORD in scripts/gemba-import/.env (copy from .env.example)');
+    throw new Error('Set SOURCE_EMAIL and SOURCE_PASSWORD in scripts/playbook-import/.env (copy from .env.example)');
   }
 }
 

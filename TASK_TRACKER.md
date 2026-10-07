@@ -9,7 +9,7 @@
 ## ▶ Resume Here (last stop)
 
 - **Last updated:** 2026-10-05 — Session 3
-- **2026-10-05 (Session 3):** all 121 SOPs imported from gembadocs.com with their original reference no., creator, dates, order and draft/published status (tooling + full log: `scripts/gemba-import/PROGRESS.md`). New **full backup & restore** — Backups page `/backups` (menu: Backups; also the Export icon on STD OPS opens it in a new tab with live progress), `apps/api/src/backups/*`: one `.zip` with every SOP, version, step, setting and image; restore checks the file first and never overwrites. **Full API suite 219/219 green** (15 suites, incl. 10 new in `test/backups.e2e-spec.ts`).
+- **2026-10-05 (Session 3):** all 121 SOPs imported from gembadocs.com with their original reference no., creator, dates, order and draft/published status (tooling + full log: `scripts/playbook-import/PROGRESS.md`). New **full backup & restore** — Backups page `/backups` (menu: Backups; also the Export icon on STD OPS opens it in a new tab with live progress), `apps/api/src/backups/*`: one `.zip` with every SOP, version, step, setting and image; restore checks the file first and never overwrites. **Full API suite 219/219 green** (15 suites, incl. 10 new in `test/backups.e2e-spec.ts`).
 - **Current phase:** Phase 10 — Full Regression & Hardening (Phase 3 blocked on video-stack decision; Phase 9 optional)
 - **2026-09-30 SIMPLIFIED to 3 containers (db, api, web):** removed redis/BullMQ/worker (maintenance runs on a timer in the API; mail sent inline via SMTP_URL or logged), MinIO (uploads on `uploads` volume, HMAC-signed `/api/files/...` URLs), Gotenberg (SOP `/versions/:vid/print` + kanban `bulk/print` return PDFs rendered by headless Chromium (puppeteer-core) inside the api container; no canonical PDF stored), ClamAV/Mailpit (Mailpit only in `e2e` profile). API suite 184/184 green. Older notes below that mention Redis/MinIO/Gotenberg/worker are historical. `scripts/backup.sh`/`restore.sh` still reference MinIO and need updating; Playwright e2e not re-run.
 - **Last completed step:** Phase 10 core done — BullMQ worker + retention/purge + media cleanup (4 tests), prod images + `docker-compose.prod.yml`, CSP, security checklist, README. **Full API suite 168/168 green**, `next build` clean.
@@ -23,7 +23,7 @@ docker compose up -d --build                               # db, redis, minio, g
 docker compose --profile test run --rm api-test            # full API test suite against gembadocs_test DB
 docker compose --profile test build api-test               # rebuild after package.json changes
 ```
-- Host ports overridable: `GEMBA_DB_PORT, GEMBA_REDIS_PORT, GEMBA_MINIO_PORT, GEMBA_API_PORT, GEMBA_WEB_PORT, GEMBA_PDF_PORT`.
+- Host ports overridable: `PLAYBOOK_DB_PORT, PLAYBOOK_REDIS_PORT, PLAYBOOK_MINIO_PORT, PLAYBOOK_API_PORT, PLAYBOOK_WEB_PORT, PLAYBOOK_PDF_PORT`.
 - New migration: edit `apps/api/prisma/schema.prisma`, then from `apps/api`:
   `DATABASE_URL=postgresql://x@localhost/x npx prisma migrate diff --from-schema-datamodel <old> --to-schema-datamodel prisma/schema.prisma --script`
   (or `docker compose run --rm api npx prisma migrate dev --create-only --name <name>`), append hand-written SQL if needed.
@@ -163,7 +163,7 @@ docker compose --profile test build api-test               # rebuild after packa
 - [ ] Full API + Playwright verification, commit
 
 ## Phase 11 — gembadocs.com import + full backup/restore (Session 3) ✅
-- [x] Import of 121 SOPs (steps, images, original ref no./creator/dates, draft vs published) — `scripts/gemba-import/` (pull → push → publish → verify; `verify-content.js` re-checks 732 steps / 725 images against the source). 14 of the 121 have no steps on gembadocs.com itself (12 titled "N/A", plus "FOR PFC PURPOSES ONLY" and "FEED DEBUGGING MODE (CNC PANEL BENDER)") and were imported as empty drafts — an empty SOP cannot be published here, so the one that is published at the source stays a draft; refs `8` and `129` appear twice at the source, so the repeats are `8-2` / `129-2` (ref no. is unique per org here).
+- [x] Import of 121 SOPs (steps, images, original ref no./creator/dates, draft vs published) — `scripts/playbook-import/` (pull → push → publish → verify; `verify-content.js` re-checks 732 steps / 725 images against the source). 14 of the 121 have no steps on gembadocs.com itself (12 titled "N/A", plus "FOR PFC PURPOSES ONLY" and "FEED DEBUGGING MODE (CNC PANEL BENDER)") and were imported as empty drafts — an empty SOP cannot be published here, so the one that is published at the source stays a draft; refs `8` and `129` appear twice at the source, so the repeats are `8-2` / `129-2` (ref no. is unique per org here).
 - [x] API `src/backups/*`: start/list/status/delete, signed download, restore (+ dry-run "check file"), audit actions `backup.exported` / `backup.restored`
 - [x] Web `/backups`: live progress (percent bar, phases, SOP/image counters, bytes, current item, warnings), history with Download/Delete, restore panel with upload progress; STD OPS Export icon (managers) starts a backup and opens it in a new tab
 - [x] Tests `test/backups.e2e-spec.ts` (10): round trip into another org is identical (steps, images by sha256, versions, config, links, dates), dry run writes nothing, skip-existing, tampered/corrupt/malicious files, permissions, cross-tenant 404, link tamper/expiry
@@ -199,7 +199,7 @@ Gaps to close:
 - [ ] Email ordering with To (multi) / cc / bcc / Subject / Body instead of a single address
 - [ ] **Multiple tags** per kanban (we store one text tag) and filter by tag
 - [ ] Decide whether to match gembadocs' field limits (50 / 25 / 10 characters; ours 2000 / 200 / 500)
-- Note: kanbans imported from gembadocs keep every one of these values in `scripts/gemba-import/output/kanbans/*.json` (`fields`), including the ones our schema cannot store yet, so they can be back-filled once the columns exist.
+- Note: kanbans imported from gembadocs keep every one of these values in `scripts/playbook-import/output/kanbans/*.json` (`fields`), including the ones our schema cannot store yet, so they can be back-filled once the columns exist.
 
 ## Phase 9 — Marketing site (optional)
 - [ ] Not started (optional per spec)
@@ -239,7 +239,7 @@ Gaps to close:
 - Full `docker compose up -d --build` verified (Docker Desktop occasionally returns `EOF` on container create — just re-run).
 
 ### Session 3 — 2026-10-05
-- Recovered Docker after the C: drive filled up (corrupt Docker data disk, stale WSL) — see `scripts/gemba-import/PROGRESS.md` for the full story and the fixes.
+- Recovered Docker after the C: drive filled up (corrupt Docker data disk, stale WSL) — see `scripts/playbook-import/PROGRESS.md` for the full story and the fixes.
 - Imported all 121 gembadocs.com SOPs and matched Reference No., Created By, Date Raised, Last Modified, list order and draft/published status; list now shows `02 Sep, 2026` dates and sorts by Newest by default.
 - Step view: duration badge moved into the step header (right), hidden at 00:00:00.
 - Built full backup & restore (Phase 11): 219/219 API tests green; verified in a real browser (progress page 27% → 100%, download link, step header).

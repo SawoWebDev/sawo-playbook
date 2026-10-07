@@ -1,7 +1,7 @@
 import { TrackActivity } from '../analytics/activity.service';
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from "@nestjs/common";
 import { AuthUser } from '../common/auth-user';
-import { CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
+import { BlockWhileImpersonating, CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
 import { BulkInviteDto, ChangeRoleDto, CreateUserDto, InviteDto, SetExtraPermissionsDto, UpdateUserDto } from './users.dto';
 import { UsersService } from './users.service';
@@ -69,6 +69,23 @@ export class UsersController {
     @ReqMeta() meta: RequestMeta,
   ) {
     return this.users.setExtraPermissions(actor, id, dto.permissions, meta);
+  }
+
+  /** Sign in as this user (testing). Returns a one-hour access token for them; the Admin's own session is untouched. */
+  @Post(':id/impersonate')
+  @HttpCode(200)
+  @BlockWhileImpersonating()
+  @RequirePermission(Permission.UsersManage)
+  impersonate(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqMeta() meta: RequestMeta) {
+    return this.users.impersonate(actor, id, meta);
+  }
+
+  /** Called with the impersonation token when the Admin goes back, so the audit log shows when it ended. */
+  @Post('impersonation/end')
+  @HttpCode(204)
+  @RequirePermission(Permission.Authenticated)
+  async endImpersonation(@CurrentUser() actor: AuthUser, @ReqMeta() meta: RequestMeta) {
+    await this.users.endImpersonation(actor, meta);
   }
 
   @Post(':id/suspend')

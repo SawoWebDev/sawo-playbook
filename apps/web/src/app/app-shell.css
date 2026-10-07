@@ -441,6 +441,20 @@
 .shell-bell-sub { font-size: 0.72rem; color: #5a5550; margin-top: 2px; }
 .shell-bell-empty { padding: 18px 14px; font-size: 0.82rem; color: #5a5550; }
 
+/* ── Impersonation banner ("Viewing as ...", with the way back to the Admin) ── */
+.imp-banner {
+  position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 2000;
+  display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 16px;
+  background: #b45309; color: #fff; font-size: 0.85rem; line-height: 1.2;
+}
+.imp-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.imp-banner-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: #fff; color: #7c2d12; border: 0; border-radius: 6px; padding: 6px 12px; font-weight: 600; font-size: 0.82rem;
+}
+.imp-banner-btn:disabled { opacity: 0.6; cursor: default; }
+@media (max-width: 768px) { .imp-banner span { display: none; } }
+
 /* ── Mobile top bar and drawer (768px and below) ─────────────────────── */
 .admin-topbar { display: none; }
 .sidebar-overlay { display: none; }
@@ -607,3 +621,17 @@
   transform: translateY(0);
 }
 .sidebar-footer-user { position: relative; }
+
+/* Instant feedback after a sidebar click: a thin progress bar and a loading placeholder */
+.nav-progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 1000; overflow: hidden;
+  background: transparent; pointer-events: none;
+}
+.nav-progress::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 40%; background: var(--primary, #1f6feb);
+  animation: nav-progress-slide 1s ease-in-out infinite;
+}
+@keyframes nav-progress-slide { 0% { left: -40%; } 100% { left: 100%; } }
+.page-loading { display: flex; align-items: center; justify-content: center; gap: 0.6rem; padding: 3rem 1rem; }
+.sidebar-nav a.is-pending { opacity: 0.85; }
+@media (prefers-reduced-motion: reduce) { .nav-progress::after { animation: none; width: 100%; left: 0; } }

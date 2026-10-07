@@ -1,4 +1,4 @@
-name: gembadocs
+name: sawo-playbook
 
 # Three containers: db + api + web. Uploads live on the `uploads` volume, background
 # cleanup runs inside the API, and emails are logged unless SMTP_URL is set.
@@ -28,7 +28,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
-    ports: ["${GEMBA_DB_PORT:-5432}:5432"]
+    ports: ["${PLAYBOOK_DB_PORT:-5432}:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gemba -d gembadocs"]
       interval: 5s
@@ -46,7 +46,7 @@ services:
       - ./apps/api:/app
       - api_node_modules:/app/node_modules
       - uploads:/data/uploads
-    ports: ["${GEMBA_API_PORT:-4000}:4000"]
+    ports: ["${PLAYBOOK_API_PORT:-4000}:4000"]
 
   web:
     build:
@@ -61,7 +61,7 @@ services:
       - ./apps/web:/app
       - web_node_modules:/app/node_modules
       - web_next:/app/.next
-    ports: ["${GEMBA_WEB_PORT:-3000}:3000"]
+    ports: ["${PLAYBOOK_WEB_PORT:-3000}:3000"]
 
   # Test runner: `docker compose --profile test run --rm api-test`
   api-test:
@@ -73,7 +73,7 @@ services:
       <<: *api-env
       NODE_ENV: test
       DATABASE_URL: postgresql://gemba:gemba@db:5432/gembadocs_test?schema=public
-      STORAGE_DIR: /tmp/gemba-test-uploads
+      STORAGE_DIR: /tmp/playbook-test-uploads
     depends_on:
       db: { condition: service_healthy }
     volumes:
@@ -117,8 +117,11 @@ services:
     command: ["sh", "-c", "npm ci --no-audit --no-fund --loglevel=error && npx playwright test $${E2E_ARGS:-}"]
 
 volumes:
+  # Pinned to the volume names created under the old compose project name so existing data is kept.
   pgdata:
+    name: gembadocs_pgdata
   uploads:
+    name: gembadocs_uploads
   api_node_modules:
   web_node_modules:
   web_next:

@@ -23,7 +23,9 @@
  * Ids inside the file are the source system's ids; a restore generates fresh ones and remaps every link.
  * ABANDONED (discarded) draft versions are not part of a backup.
  */
-export const BACKUP_FORMAT = 'gembadocs-sop-backup' /* file-format id: kept so older backups still restore */;
+export const BACKUP_FORMAT = 'sawo-playbook-sop-backup';
+/** Format id written before the rename. Still accepted on restore so older backup files keep working. */
+export const BACKUP_FORMAT_LEGACY = 'gembadocs-sop-backup';
 export const BACKUP_FORMAT_VERSION = 2;
 
 /** What a backup can include. A full backup has them all. */

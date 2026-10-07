@@ -23,7 +23,7 @@ const { launch, login, dump } = require('./lib');
     await page.goto(href, { waitUntil: 'networkidle', timeout: 20_000 });
     await dump(page, 'detail');
 
-    console.log('[dump-one] done. Inspect scripts/gemba-import/debug/*.html and *.png');
+    console.log('[dump-one] done. Inspect scripts/playbook-import/debug/*.html and *.png');
   } catch (err) {
     console.error('[dump-one] error:', err.message);
     await dump(page, 'error').catch(() => {});

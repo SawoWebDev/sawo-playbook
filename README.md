@@ -20,7 +20,7 @@ apps/web   Next.js app; proxies /api/* to the API so the browser sees one origin
 docker compose up -d --build      # db, api, web
 open http://localhost:3000        # create an organization via "Create an account"
 ```
-Ports can be changed with `GEMBA_WEB_PORT`, `GEMBA_API_PORT`, `GEMBA_DB_PORT`.
+Ports can be changed with `PLAYBOOK_WEB_PORT`, `PLAYBOOK_API_PORT`, `PLAYBOOK_DB_PORT`.
 Without `SMTP_URL`, invitation / password-reset emails are printed in the API log (`docker compose logs api`).
 
 ## Tests

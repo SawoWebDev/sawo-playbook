@@ -2,6 +2,7 @@
 
 import { useToast } from '@/components/feedback/Toast';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type Role } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -26,7 +27,8 @@ interface InvitationRow {
  * the organisation's user list is small enough to hold in memory. Visibility uses server permissions only.
  */
 export default function UsersPage() {
-  const { user: me } = useAuth();
+  const { user: me, startImpersonation } = useAuth();
+  const router = useRouter();
   const canManage = hasPermission(me, 'users.manage');
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [invites, setInvites] = useState<InvitationRow[]>([]);
@@ -82,6 +84,19 @@ export default function UsersPage() {
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Signs the Admin in as this person for testing. "Back to admin" in the banner returns to the Admin session. */
+  const impersonate = async (u: UserRow) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await startImpersonation(u.id);
+      router.push('/');
+    } catch (e) {
+      setError(errorMessage(e));
       setBusy(false);
     }
   };
@@ -282,6 +297,18 @@ export default function UsersPage() {
                       </td>
                       <td className="muted um-nowrap">{u.lastLoginAt ? fmtDate(u.lastLoginAt) : 'Never'}</td>
                       <td className="um-actions">
+                        {canManage && (u.status === 'active' || u.status === 'invited') && u.orgRole !== 'ADMIN' && u.id !== me?.id && (
+                          <button
+                            type="button"
+                            className="grp-icon-btn"
+                            title={`Sign in as ${u.name} (for testing)`}
+                            aria-label={`Impersonate ${u.name}`}
+                            disabled={busy}
+                            onClick={() => void impersonate(u)}
+                          >
+                            <i className="fa-solid fa-user-secret" aria-hidden />
+                          </button>
+                        )}
                         <Link className="grp-icon-btn" href={`/users/${u.id}`} title={`Edit ${u.name}`} aria-label={`Edit ${u.name}`}>
                           <i className="fa-solid fa-pen" aria-hidden />
                         </Link>

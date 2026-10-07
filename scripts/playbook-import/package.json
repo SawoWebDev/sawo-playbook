@@ -1,5 +1,5 @@
 {
-  "name": "@gembadocs/gemba-import",
+  "name": "@sawo-playbook/playbook-import",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",

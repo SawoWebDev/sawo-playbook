@@ -1,5 +1,6 @@
 import {
   BACKUP_FORMAT,
+  BACKUP_FORMAT_LEGACY,
   BACKUP_FORMAT_VERSION,
   BackupActivity,
   BackupChecklist,
@@ -71,7 +72,7 @@ function idOrNull(v: unknown, what: string): string | null {
 
 export function parseManifest(raw: unknown): BackupManifest {
   const o = obj(raw, 'manifest.json');
-  if (o.format !== BACKUP_FORMAT) throw new BackupFormatError('This is not a SOP backup file (unknown format)');
+  if (o.format !== BACKUP_FORMAT && o.format !== BACKUP_FORMAT_LEGACY) throw new BackupFormatError('This is not a SOP backup file (unknown format)');
   const version = int(o.formatVersion, 'formatVersion', 1, 1000);
   if (version > BACKUP_FORMAT_VERSION) throw new BackupFormatError(`This backup was made by a newer version (format ${version}); this app understands format ${BACKUP_FORMAT_VERSION}`);
   const files = obj(o.files, 'files');

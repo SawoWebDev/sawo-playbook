@@ -6,6 +6,8 @@ import { AccessTokenPayload } from '../common/auth-user';
 import { env } from '../config/env';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 
+export const IMPERSONATION_TTL_SECONDS = 3600;
+
 export function hashToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
@@ -40,6 +42,15 @@ export class TokenService {
       algorithm: 'HS256',
       expiresIn: env.jwtAccessTtlSeconds,
     });
+  }
+
+  /**
+   * Access token for "Impersonate": identifies the target user, carries the Admin's id, lives for one hour and has
+   * no refresh token, so it cannot be renewed without going back through the Admin.
+   */
+  signImpersonationToken(target: Pick<User, 'id' | 'organizationId' | 'orgRole' | 'tokenVersion'>, adminId: string): string {
+    const payload: AccessTokenPayload = { sub: target.id, org: target.organizationId, role: target.orgRole, tv: target.tokenVersion, imp: adminId };
+    return this.jwt.sign(payload, { secret: env.jwtAccessSecret, algorithm: 'HS256', expiresIn: IMPERSONATION_TTL_SECONDS });
   }
 
   async issueRefreshToken(

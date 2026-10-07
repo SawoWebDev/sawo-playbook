@@ -22,12 +22,15 @@ export interface SessionUser {
   groupIds: string[];
   /** True when an Admin set a temporary password. The app stays locked to the change-password page until it is replaced. */
   passwordMustChange?: boolean;
+  /** Set while an Admin is signed in as this user ("Impersonate"): the Admin's id and name. */
+  impersonatedBy?: { id: string; name: string } | null;
 }
 
 /** The authorisation context returned by GET /auth/me (display only; the server enforces every request). */
 export interface AuthContext {
   permissions: string[];
   groupIds: string[];
+  impersonatedBy?: { id: string; name: string } | null;
 }
 
 export function fetchAuthContext(): Promise<AuthContext> {
@@ -59,6 +62,8 @@ function extractMessage(body: unknown): string | undefined {
 }
 
 let accessToken: string | null = null;
+/** True while the access token belongs to an impersonation session (no refresh cookie of its own). */
+let impersonating = false;
 let refreshInFlight: Promise<SessionResponse | null> | null = null;
 const listeners = new Set<(u: SessionUser | null) => void>();
 
@@ -67,7 +72,21 @@ export function onSessionChange(fn: (u: SessionUser | null) => void): () => void
   return () => listeners.delete(fn);
 }
 
+const IMP_KEY = 'sawo_impersonation_token';
+
+function storeImpersonation(token: string | null) {
+  try {
+    if (token) sessionStorage.setItem(IMP_KEY, token);
+    else sessionStorage.removeItem(IMP_KEY);
+  } catch {
+    /* storage blocked: impersonation just will not survive a refresh */
+  }
+}
+
 function applySession(s: SessionResponse | null) {
+  if (s) signedOutOnPurpose = false;
+  impersonating = false;
+  storeImpersonation(null);
   accessToken = s?.accessToken ?? null;
   listeners.forEach((fn) => fn(s?.user ?? null));
 }
@@ -85,6 +104,38 @@ export function refreshSession(): Promise<SessionResponse | null> {
       refreshInFlight = null;
     });
   return refreshInFlight;
+}
+
+/**
+ * Called once on page load. Resumes an impersonation session kept for this tab if its token is still valid, otherwise
+ * restores the normal session from the refresh cookie.
+ */
+export async function restoreSession(): Promise<SessionResponse | null> {
+  let token: string | null = null;
+  try {
+    token = sessionStorage.getItem(IMP_KEY);
+  } catch {
+    token = null;
+  }
+  if (token) {
+    accessToken = token;
+    try {
+      const res = await doFetch('/auth/me', {});
+      if (res.ok) {
+        const me = (await res.json()) as SessionUser;
+        if (me.impersonatedBy) {
+          impersonating = true;
+          listeners.forEach((fn) => fn({ ...me, permissions: [], groupIds: [] }));
+          return { accessToken: token, expiresIn: 0, user: me };
+        }
+      }
+    } catch {
+      /* fall through to the normal session */
+    }
+    accessToken = null;
+    storeImpersonation(null);
+  }
+  return refreshSession();
 }
 
 export interface RequestOptions {
@@ -194,7 +245,30 @@ export async function acceptInvite(input: { token: string; name: string; passwor
   return s.user;
 }
 
+/**
+ * Sign in as another user for testing. The server returns a one-hour access token for them and no refresh token, so the
+ * Admin's own refresh cookie is untouched and still belongs to the Admin: going back is just a refresh.
+ */
+export async function startImpersonation(userId: string): Promise<SessionUser> {
+  const s = await api<SessionResponse>(`/users/${userId}/impersonate`, { method: 'POST' });
+  applySession(s);
+  impersonating = true;
+  storeImpersonation(s.accessToken);
+  return s.user;
+}
+
+/** Leave the impersonated account and return to the Admin session (restored from the Admin's refresh cookie). */
+export async function stopImpersonation(): Promise<SessionUser | null> {
+  if (impersonating) await doFetch('/users/impersonation/end', { method: 'POST' }).catch(() => undefined);
+  const s = await refreshSession();
+  return s?.user ?? null;
+}
+
+/** True once the user chose Sign out, so the app does not send them back to the page they left after the next login. */
+export let signedOutOnPurpose = false;
+
 export async function logout(): Promise<void> {
+  signedOutOnPurpose = true;
   await fetch('/api/auth/refresh/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => undefined);
   applySession(null);
 }

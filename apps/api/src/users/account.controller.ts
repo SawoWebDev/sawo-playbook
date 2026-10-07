@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { setRefreshCookie, sessionBody } from '../auth/auth.controller';
 import { AuthUser } from '../common/auth-user';
-import { AllowWhilePasswordChangeRequired, CurrentUser, Public, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
+import { AllowWhilePasswordChangeRequired, BlockWhileImpersonating, CurrentUser, Public, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
 import { AccountService } from './account.service';
 import {
@@ -60,6 +60,7 @@ export class AccountController {
   }
 
   @Post('profile/password')
+  @BlockWhileImpersonating()
   @HttpCode(200)
   @RequirePermission(Permission.Authenticated)
   @AllowWhilePasswordChangeRequired()
@@ -81,6 +82,7 @@ export class AccountController {
   }
 
   @Post('profile/mfa/setup')
+  @BlockWhileImpersonating()
   @HttpCode(200)
   @RequirePermission(Permission.Authenticated)
   mfaSetup(@CurrentUser() actor: AuthUser) {
@@ -88,6 +90,7 @@ export class AccountController {
   }
 
   @Post('profile/mfa/enable')
+  @BlockWhileImpersonating()
   @HttpCode(200)
   @RequirePermission(Permission.Authenticated)
   async mfaEnable(@CurrentUser() actor: AuthUser, @Body() dto: MfaCodeDto, @ReqMeta() meta: RequestMeta, @Res({ passthrough: true }) res: Response) {
@@ -97,6 +100,7 @@ export class AccountController {
   }
 
   @Post('profile/mfa/disable')
+  @BlockWhileImpersonating()
   @HttpCode(200)
   @RequirePermission(Permission.Authenticated)
   mfaDisable(@CurrentUser() actor: AuthUser, @Body() dto: MfaDisableDto, @ReqMeta() meta: RequestMeta) {
