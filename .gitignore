@@ -23,3 +23,9 @@ e2e/review/
 
 # exported SOP backups contain organization data and are large
 sawo-playbook-backup-*.zip
+
+# raw debug captures (HTML/screenshots) from the gemba-import tool's source site
+scripts/gemba-import/debug/
+
+# scraped SOP/kanban/image dump from the gemba-import tool (large, local-only)
+scripts/gemba-import/output/
