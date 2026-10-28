@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { hasPermission, roleLabel } from '@/lib/permissions';
 import { setPreviewRole } from '@/lib/preview-role';
+import { useDialogGuard } from '@/components/useDialogGuard';
 
 /**
  * App shell, matching the REACT_SITE admin panel (src/Administrator/AdminLayout.jsx).
@@ -51,6 +52,7 @@ function GlobalSearch() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, realUser, previewRole, logout, impersonatedBy, stopImpersonation } = useAuth();
+  useDialogGuard();
   const [leavingImp, setLeavingImp] = useState(false);
   // The item just clicked. It shows as active straight away, before the next page has loaded.
   const [pendingHref, setPendingHref] = useState<string | null>(null);

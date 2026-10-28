@@ -155,6 +155,9 @@ label { color: var(--ui-text); }
 .dialog h3 { font-size: 16px; }
 .dialog .row:last-child { margin-top: 16px; justify-content: flex-end; }
 @keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+/* A backdrop click that was ignored because the dialog has unsaved input. */
+.dialog.dialog-shake { animation: dialog-shake 0.25s ease; }
+@keyframes dialog-shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
 @keyframes ui-pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
 
 .menu-list {
