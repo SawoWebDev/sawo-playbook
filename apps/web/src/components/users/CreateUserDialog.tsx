@@ -25,7 +25,11 @@ function generatePassword(length = 14): string {
  * Create an account now with a temporary password. The server enforces the role and group rules and hashes the
  * password; the user must replace it at first sign-in. The password is shown once, here, so the Admin can pass it on.
  */
-export function CreateUserDialog({ groups, onClose, onDone }: { groups: GroupOption[]; onClose: () => void; onDone: (message: string) => void }) {
+export function CreateUserDialog({ groups: initialGroups, onClose, onDone }: { groups: GroupOption[]; onClose: () => void; onDone: (message: string) => void }) {
+  const [groups, setGroups] = useState<GroupOption[]>(initialGroups);
+  const [newGroup, setNewGroup] = useState('');
+  const [addingGroup, setAddingGroup] = useState(false);
+  const [groupBusy, setGroupBusy] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('OPERATOR');
@@ -37,6 +41,27 @@ export function CreateUserDialog({ groups, onClose, onDone }: { groups: GroupOpt
   const [created, setCreated] = useState<Created | null>(null);
 
   const toggleGroup = (id: string) => setGroupIds((g) => (g.includes(id) ? g.filter((x) => x !== id) : [...g, id]));
+
+  /** Create a group without leaving the dialog, then tick it for this user. */
+  const addGroup = async () => {
+    const groupName = newGroup.trim();
+    if (!groupName) return;
+    setGroupBusy(true);
+    setError(null);
+    try {
+      await api('/groups', { method: 'POST', body: { name: groupName } });
+      const fresh = await api<GroupOption[]>('/groups');
+      setGroups(fresh);
+      const made = fresh.find((g) => g.name === groupName);
+      if (made) setGroupIds((ids) => (ids.includes(made.id) ? ids : [...ids, made.id]));
+      setNewGroup('');
+      setAddingGroup(false);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setGroupBusy(false);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -111,7 +136,7 @@ export function CreateUserDialog({ groups, onClose, onDone }: { groups: GroupOpt
           <fieldset style={{ border: 0, padding: 0, marginBottom: 14 }}>
             <legend>Groups</legend>
             {groups.length === 0 ? (
-              <p className="muted">No groups exist yet. Create one on the Groups tab first.</p>
+              <p className="muted">No groups exist yet. Create one below.</p>
             ) : (
               <div className="toggle-row">
                 {groups.map((g) => (
@@ -121,6 +146,28 @@ export function CreateUserDialog({ groups, onClose, onDone }: { groups: GroupOpt
                   </label>
                 ))}
               </div>
+            )}
+            {addingGroup ? (
+              <div className="row" style={{ marginTop: 8 }}>
+                <input
+                  aria-label="New group name"
+                  placeholder="New group name"
+                  value={newGroup}
+                  autoFocus
+                  style={{ flex: 1 }}
+                  onChange={(e) => setNewGroup(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void addGroup();
+                    }
+                  }}
+                />
+                <button className="btn btn-sm btn-primary" type="button" disabled={groupBusy || !newGroup.trim()} onClick={() => void addGroup()}>Add</button>
+                <button className="btn btn-sm" type="button" onClick={() => { setAddingGroup(false); setNewGroup(''); }}>Cancel</button>
+              </div>
+            ) : (
+              <button className="btn btn-sm" type="button" style={{ marginTop: 8 }} onClick={() => setAddingGroup(true)}>+ New group</button>
             )}
             <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>Everyone except Admins needs at least one group.</p>
           </fieldset>

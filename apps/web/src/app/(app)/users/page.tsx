@@ -353,7 +353,10 @@ export default function UsersPage() {
       {showCreate && (
         <CreateUserDialog
           groups={groups}
-          onClose={() => setShowCreate(false)}
+          onClose={() => {
+            setShowCreate(false);
+            api<GroupOption[]>('/groups').then(setGroups).catch(() => undefined);
+          }}
           onDone={(message) => {
             toast.success(message);
             load().catch((e) => setError(errorMessage(e)));
