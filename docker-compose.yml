@@ -39,7 +39,12 @@ services:
     build:
       context: ./apps/api
       target: dev
-    environment: *api-env
+    environment:
+      <<: *api-env
+      # Windows bind mounts don't reliably deliver file-change events into the container,
+      # so nest start --watch can silently run stale code until this is set (mirrors the
+      # web service's WATCHPACK_POLLING below).
+      CHOKIDAR_USEPOLLING: "true"
     depends_on:
       db: { condition: service_healthy }
     volumes:

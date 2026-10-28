@@ -272,7 +272,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     title={item.label}
                     aria-busy={pendingHref === item.href}
                   >
-                    <i className={`fa-solid ${pendingHref === item.href ? 'fa-circle-notch fa-spin' : item.icon} nav-icon`} aria-hidden />
+                    <i className={`fa-solid ${item.icon} nav-icon`} aria-hidden />
                     <span className="sidebar-nav-label">{item.label}</span>
                   </Link>
                 ))}
@@ -335,7 +335,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div id="subbar-left" />
             <div id="subbar-right" />
           </div>
-          <div className="app-content">{children}</div>
+          <div className="app-content">
+            {/* Shown the instant a sidebar item is clicked, rather than waiting for that page to finish
+                downloading and mount; it clears itself once the pathname actually changes (see the effect above). */}
+            {pendingHref ? (
+              <div className="page-loading muted" role="status">
+                <i className="fa-solid fa-circle-notch fa-spin" aria-hidden /> Loading…
+              </div>
+            ) : (
+              children
+            )}
+          </div>
         </div>
       </main>
     </div>
