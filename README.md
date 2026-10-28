@@ -6,6 +6,7 @@ QR/PDF sharing, checklists, kanban cards, skills matrix, folders and analytics.
 - Specification: [SAWO-Playbook-System-Build-Plan-FINAL.md](SAWO-Playbook-System-Build-Plan-FINAL.md)
 - Build progress / session hand-off: [TASK_TRACKER.md](TASK_TRACKER.md)
 - Decisions: [docs/decisions](docs/decisions) · Security: [docs/security-checklist.md](docs/security-checklist.md)
+- Exposing a container to other machines on the LAN (Windows/WSL2 hosts): [docs/lan-access.md](docs/lan-access.md)
 
 ## Stack
 NestJS 11 + Prisma 6 (PostgreSQL 16) · Next.js 15 — three Docker containers (db, api, web). Uploads are stored on a Docker volume; SOP and kanban PDFs are rendered in the API container by headless Chromium (no separate PDF service).
