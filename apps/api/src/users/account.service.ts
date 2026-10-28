@@ -48,7 +48,6 @@ export class AccountService {
     if (!user.passwordHash || !(await argon2.verify(user.passwordHash, current).catch(() => false))) {
       throw new UnauthorizedException('Current password is incorrect');
     }
-    if (current === next) throw new BadRequestException('New password must differ from the current one');
     const passwordHash = await argon2.hash(next);
     const updated = await this.prisma.$transaction(async (tx) => {
       // Setting a password also clears a temporary-password requirement.
