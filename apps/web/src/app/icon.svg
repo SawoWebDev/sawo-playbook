@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SAWO Playbook mark: an SOP sheet with numbered steps, signed off by a check -->
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#af8564"/>
+      <stop offset="1" stop-color="#7a4a2c"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#wood)"/>
+  <path d="M15 10h24l10 10v34a3 3 0 0 1-3 3H15a3 3 0 0 1-3-3V13a3 3 0 0 1 3-3z" fill="#fff"/>
+  <path d="M39 10v8a2 2 0 0 0 2 2h8z" fill="#e8d6c4"/>
+  <circle cx="20" cy="27" r="3.5" fill="#7a4a2c"/>
+  <rect x="27" y="25" width="15" height="4" rx="2" fill="#c9a882"/>
+  <circle cx="20" cy="38" r="3.5" fill="#7a4a2c"/>
+  <rect x="27" y="36" width="11" height="4" rx="2" fill="#c9a882"/>
+  <circle cx="47" cy="47" r="12" fill="#c8454a" stroke="#fff" stroke-width="3"/>
+  <path d="M41.5 47.5l4 4 7.5-8" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

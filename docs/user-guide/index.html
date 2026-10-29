@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAWO Playbook – Editor User Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --wood: #7a4a2c;
+    --wood-light: #af8564;
+    --wood-soft: #f6efe9;
+    --ink: #1f1a17;
+    --muted: #6b625c;
+    --line: #e6ddd5;
+    --paper: #ffffff;
+    --desk: #e9e4df;
+    --red: #b42318;
+    --red-soft: #fdecea;
+    --green: #1a7f37;
+    --green-soft: #e8f5ec;
+    --amber: #9a6700;
+    --amber-soft: #fff6dd;
+    --blue: #1f5fbf;
+    --blue-soft: #eaf1fc;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  [id] { scroll-margin-top: 70px; }
+  body {
+    margin: 0;
+    background: var(--desk);
+    color: var(--ink);
+    font-family: Montserrat, 'Segoe UI', Roboto, Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+  }
+
+  /* ── Screen toolbar ── */
+  .toolbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px;
+    background: linear-gradient(90deg, var(--wood-light), var(--wood));
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  .toolbar img { height: 28px; }
+  .toolbar strong { font-size: 15px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar a, .toolbar button {
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--wood); background: #fff;
+    border: 0; border-radius: 8px; padding: 8px 14px;
+    text-decoration: none; cursor: pointer;
+  }
+  .toolbar a.ghost, .toolbar button.ghost { background: rgba(255,255,255,.18); color: #fff; }
+
+  /* ── Sheets: each looks like an A4 page on screen and starts a new page in print ── */
+  .sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 24px auto;
+    padding: 20mm 18mm 22mm;
+    background: var(--paper);
+    box-shadow: 0 4px 18px rgba(60, 40, 20, .18);
+    position: relative;
+  }
+  .sheet-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 8pt; color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 6px; margin-bottom: 18px;
+  }
+  .sheet-head img { height: 16px; vertical-align: middle; margin-right: 6px; }
+
+  h1, h2, h3, h4 { color: var(--ink); line-height: 1.25; }
+  h2 {
+    font-size: 20pt; font-weight: 800; margin: 0 0 6px;
+    color: var(--wood);
+  }
+  h2 .num { color: var(--wood-light); margin-right: 8px; }
+  .lead { color: var(--muted); font-size: 11pt; margin: 0 0 18px; }
+  h3 {
+    font-size: 13pt; font-weight: 700; margin: 26px 0 8px;
+    padding-bottom: 4px; border-bottom: 2px solid var(--wood-soft);
+    break-after: avoid;
+  }
+  h3 .num { color: var(--wood-light); margin-right: 6px; }
+  h4 { font-size: 11pt; margin: 16px 0 6px; break-after: avoid; }
+  p { margin: 0 0 10px; }
+  ul, ol { margin: 0 0 12px; padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  a { color: var(--wood); }
+  code, kbd {
+    font-family: Consolas, 'Courier New', monospace; font-size: 9pt;
+    background: var(--wood-soft); border-radius: 4px; padding: 1px 5px;
+  }
+  .ui {
+    display: inline-block; font-weight: 700; font-size: 9pt;
+    background: var(--wood-soft); color: var(--wood);
+    border: 1px solid #e5d3c3; border-radius: 5px; padding: 0 6px; white-space: nowrap;
+  }
+
+  /* numbered steps */
+  ol.steps { list-style: none; counter-reset: step; padding-left: 0; }
+  ol.steps > li {
+    counter-increment: step; position: relative;
+    padding-left: 34px; margin-bottom: 9px; min-height: 24px;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0;
+    width: 23px; height: 23px; border-radius: 50%;
+    background: var(--wood); color: #fff;
+    font-weight: 700; font-size: 9pt;
+    display: grid; place-items: center;
+  }
+
+  /* figures */
+  figure { margin: 12px 0 18px; break-inside: avoid; text-align: center; }
+  figure img {
+    max-width: 100%; height: auto;
+    border: 1px solid var(--line); border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  figure.tall img { max-height: 225mm; width: auto; }
+  figure.half img { max-width: 62%; }
+  figure.small img { max-width: 48%; }
+  figcaption { font-size: 8.5pt; color: var(--muted); margin-top: 6px; }
+  figcaption b { color: var(--wood); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+  .pair figure { margin: 8px 0; }
+
+  /* callouts */
+  .callout {
+    border-left: 4px solid var(--wood); background: var(--wood-soft);
+    border-radius: 0 8px 8px 0; padding: 10px 14px; margin: 12px 0 16px;
+    break-inside: avoid; font-size: 10pt;
+  }
+  .callout b:first-child { display: block; margin-bottom: 2px; }
+  .callout.tip { border-color: var(--green); background: var(--green-soft); }
+  .callout.tip b:first-child { color: var(--green); }
+  .callout.warn { border-color: var(--red); background: var(--red-soft); }
+  .callout.warn b:first-child { color: var(--red); }
+  .callout.note { border-color: var(--blue); background: var(--blue-soft); }
+  .callout.note b:first-child { color: var(--blue); }
+  .callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 9.5pt; break-inside: auto; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 9px; border-bottom: 1px solid var(--line); }
+  th { background: var(--wood-soft); color: var(--wood); font-weight: 700; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .03em; }
+  tr { break-inside: avoid; }
+  .yes { color: var(--green); font-weight: 700; }
+  .no { color: var(--red); font-weight: 700; }
+
+  /* workflow chips */
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 16px; break-inside: avoid; }
+  .flow span.st {
+    font-weight: 700; font-size: 8.5pt; border-radius: 999px; padding: 5px 11px; border: 1px solid;
+  }
+  .flow .arrow { color: var(--wood-light); font-weight: 800; font-size: 16pt; line-height: 1; margin-top: -14px; }
+  .st.draft { background: #f1ede9; color: #5a4a3e; border-color: #ddd2c8; }
+  .st.pre { background: var(--amber-soft); color: var(--amber); border-color: #f0dca6; }
+  .st.appr { background: var(--blue-soft); color: var(--blue); border-color: #c8d9f3; }
+  .st.ok { background: var(--green-soft); color: var(--green); border-color: #bfe3ca; }
+  .st.rej { background: var(--red-soft); color: var(--red); border-color: #f3c3bd; }
+  .who { display: block; font-size: 8pt; color: var(--muted); font-weight: 500; text-align: center; margin-top: 2px; }
+
+  /* cover */
+  .cover { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+  .cover-top {
+    background: linear-gradient(135deg, var(--wood-light), var(--wood) 70%);
+    color: #fff; padding: 38mm 20mm 26mm;
+  }
+  .cover-top img { height: 92px; background: #fff; border-radius: 6px; padding: 6px; }
+  .cover-top .kicker { margin-top: 34px; text-transform: uppercase; letter-spacing: .18em; font-size: 10pt; opacity: .85; }
+  .cover-top h1 { color: #fff; font-size: 34pt; font-weight: 800; margin: 6px 0 4px; }
+  .cover-top .sub { font-size: 14pt; opacity: .95; }
+  .cover-body { padding: 16mm 20mm; flex: 1; display: flex; flex-direction: column; }
+  .cover-body .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
+  .fact { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .fact .k { font-size: 8pt; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .fact .v { font-weight: 700; color: var(--wood); }
+  .cover-foot { margin-top: auto; font-size: 8.5pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; }
+
+  /* table of contents */
+  .toc { columns: 2; column-gap: 26px; font-size: 10pt; }
+  .toc .group { break-inside: avoid; margin-bottom: 12px; }
+  .toc a { color: var(--ink); text-decoration: none; display: flex; gap: 6px; padding: 2px 0; }
+  .toc a:hover { color: var(--wood); }
+  .toc .group > a { font-weight: 700; color: var(--wood); font-size: 10.5pt; }
+  .toc .group > a .n { min-width: 22px; }
+  .toc .sub a { padding-left: 22px; color: var(--muted); }
+  .toc .sub a .n { min-width: 30px; }
+
+  /* quick reference */
+  .qr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .qr div { border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; break-inside: avoid; }
+  .qr b { color: var(--wood); display: block; }
+
+  @media screen and (max-width: 230mm) {
+    .sheet { width: auto; min-height: 0; margin: 12px; padding: 18px 16px; }
+    .cover-top { padding: 40px 20px 30px; }
+    .cover-body { padding: 20px; }
+    .cover-body .facts, .pair, .qr { grid-template-columns: 1fr; }
+    .toc { columns: 1; }
+    figure.half img, figure.small img { max-width: 100%; }
+    .toolbar strong { display: none; }
+  }
+
+  /* ── Print / PDF: one sheet = one or more A4 pages, same look as on screen ── */
+  @page {
+    size: A4;
+    margin: 14mm 16mm 16mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-family: Montserrat, Arial, sans-serif; font-size: 8pt; color: #6b625c; }
+    @bottom-left { content: "SAWO Playbook – Editor User Guide"; font-family: Montserrat, Arial, sans-serif; font-size: 8pt; color: #6b625c; }
+  }
+  @page :first {
+    margin: 0;
+    @bottom-right { content: none; }
+    @bottom-left { content: none; }
+  }
+  @media print {
+    body { background: #fff; font-size: 10pt; }
+    .toolbar { display: none; }
+    .sheet {
+      width: auto; min-height: 0; margin: 0; padding: 0;
+      box-shadow: none; break-before: page;
+    }
+    .sheet:first-of-type { break-before: auto; }
+    .sheet-head { display: none; }
+    .cover { height: 297mm; }
+    a { text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <img src="img/logo-sawo.webp" alt="">
+  <strong>SAWO Playbook · Editor User Guide</strong>
+  <span class="spacer"></span>
+  <a href="#contents" class="ghost">Contents</a>
+  <a href="SAWO-Playbook-Editor-Guide.pdf" download>Download PDF</a>
+  <button type="button" class="ghost" onclick="window.print()">Print</button>
+</div>
+
+<!-- ═════════════ COVER ═════════════ -->
+<section class="sheet cover">
+  <div class="cover-top">
+    <img src="img/sawo-logo.webp" alt="SAWO">
+    <div class="kicker">SAWO Playbook</div>
+    <h1>Editor User Guide</h1>
+    <div class="sub">How to create and maintain Standard Ops (SOPs), kanban cards, checklists, folders and training records.</div>
+  </div>
+  <div class="cover-body">
+    <p style="font-size:11pt">This guide walks you through everything an <b>Editor</b> does in SAWO Playbook, step by step, with a screenshot for each screen. Use the contents page to jump straight to the task you need.</p>
+    <div class="facts">
+      <div class="fact"><div class="k">Written for</div><div class="v">Editors</div></div>
+      <div class="fact"><div class="k">Covers</div><div class="v">SOPs · Kanbans · Checklists · Folders · Skills</div></div>
+      <div class="fact"><div class="k">Edition</div><div class="v">October 2026</div></div>
+    </div>
+    <div class="callout note" style="margin-top:22px">
+      <b>About the screenshots</b>
+      The screenshots come from a demo organisation with example users (Erin Editor, Riley Reviewer, Pat Approver, Sam Operator). Your organisation's menu, names and folders will differ, and your Admin may have switched some features on or off.
+    </div>
+    <div class="cover-foot">SAWO Playbook · Editor User Guide · You can view this guide in a browser or print it / save it as PDF.</div>
+  </div>
+</section>
+
+<!-- ═════════════ CONTENTS ═════════════ -->
+<section class="sheet" id="contents">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>Contents</span></div>
+  <h2>Contents</h2>
+  <p class="lead">Click any line to jump to it.</p>
+  <nav class="toc">
+    <div class="group"><a href="#s1"><span class="n">1</span>Getting started</a>
+      <div class="sub">
+        <a href="#s1-1"><span class="n">1.1</span>What an Editor can do</a>
+        <a href="#s1-2"><span class="n">1.2</span>Signing in for the first time</a>
+        <a href="#s1-3"><span class="n">1.3</span>Finding your way around</a>
+        <a href="#s1-4"><span class="n">1.4</span>How approval works</a>
+      </div></div>
+    <div class="group"><a href="#s2"><span class="n">2</span>Standard Ops (SOPs)</a>
+      <div class="sub">
+        <a href="#s2-1"><span class="n">2.1</span>Create a new SOP</a>
+        <a href="#s2-2"><span class="n">2.2</span>Name and SOP configuration</a>
+        <a href="#s2-3"><span class="n">2.3</span>PDF layout options</a>
+        <a href="#s2-4"><span class="n">2.4</span>Add and arrange steps</a>
+        <a href="#s2-5"><span class="n">2.5</span>Save as Draft or Finish &amp; Submit</a>
+        <a href="#s2-6"><span class="n">2.6</span>Follow the approval</a>
+        <a href="#s2-7"><span class="n">2.7</span>If your SOP is rejected</a>
+        <a href="#s2-8"><span class="n">2.8</span>View, print and share a published SOP</a>
+        <a href="#s2-9"><span class="n">2.9</span>Find SOPs: search, filter, views</a>
+        <a href="#s2-10"><span class="n">2.10</span>The SOP card menu</a>
+        <a href="#s2-11"><span class="n">2.11</span>Update a published SOP</a>
+      </div></div>
+    <div class="group"><a href="#s3"><span class="n">3</span>Checklists</a>
+      <div class="sub">
+        <a href="#s3-1"><span class="n">3.1</span>Make an SOP a Checklist SOP</a>
+        <a href="#s3-2"><span class="n">3.2</span>Run a checklist</a>
+        <a href="#s3-3"><span class="n">3.3</span>Review checklist runs</a>
+      </div></div>
+    <div class="group"><a href="#s4"><span class="n">4</span>Folders</a></div>
+    <div class="group"><a href="#s5"><span class="n">5</span>Kanban cards</a>
+      <div class="sub">
+        <a href="#s5-1"><span class="n">5.1</span>Create a kanban card</a>
+        <a href="#s5-2"><span class="n">5.2</span>Submit a new card for review</a>
+        <a href="#s5-3"><span class="n">5.3</span>Published cards: view, print, share</a>
+        <a href="#s5-4"><span class="n">5.4</span>Change an existing card</a>
+      </div></div>
+    <div class="group"><a href="#s6"><span class="n">6</span>The Approvals page</a></div>
+    <div class="group"><a href="#s7"><span class="n">7</span>Skills &amp; training records</a></div>
+    <div class="group"><a href="#s8"><span class="n">8</span>Analytics</a></div>
+    <div class="group"><a href="#s9"><span class="n">9</span>Search</a></div>
+    <div class="group"><a href="#s10"><span class="n">10</span>Your profile, password &amp; 2FA</a></div>
+    <div class="group"><a href="#s11"><span class="n">11</span>Troubleshooting &amp; FAQ</a></div>
+    <div class="group"><a href="#s12"><span class="n">12</span>Quick reference</a></div>
+  </nav>
+</section>
+
+<!-- ═════════════ 1. GETTING STARTED ═════════════ -->
+<section class="sheet" id="s1">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>1 · Getting started</span></div>
+  <h2><span class="num">1</span>Getting started</h2>
+  <p class="lead">What the Editor role is for, how to sign in, and how the screen is laid out.</p>
+
+  <h3 id="s1-1"><span class="num">1.1</span>What an Editor can do</h3>
+  <p>Editors <b>write and maintain</b> content. You create SOPs and kanban cards and send them for approval. Approvers check your work and publish it. Your Admin can change role permissions, so your account may have a few more or fewer options than listed here.</p>
+  <table>
+    <tr><th style="width:62%">Task</th><th>Editor</th></tr>
+    <tr><td>View published SOPs and kanban cards</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>Create and edit SOPs and kanban cards (as drafts)</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>Submit drafts for approval</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>Create, rename and organise folders</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>Run checklists and see everyone's checklist runs</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>Record training for operators assigned to you</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>Print, share and export PDFs, QR codes and links</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>See your own activity in Analytics</td><td class="yes">✓ Yes</td></tr>
+    <tr><td>Approve or publish (yours or anyone else's)</td><td class="no">✗ No (Pre Approvers and Approvers do this)</td></tr>
+    <tr><td>Delete SOPs or kanban cards</td><td class="no">✗ No</td></tr>
+    <tr><td>Manage users, groups, roles and organisation settings</td><td class="no">✗ No (Admins only)</td></tr>
+  </table>
+
+  <h3 id="s1-2"><span class="num">1.2</span>Signing in for the first time</h3>
+  <p>Your Admin creates your account. You'll receive either an <b>invitation link</b> by email or a <b>temporary password</b>.</p>
+  <ol class="steps">
+    <li>Open SAWO Playbook in your browser and enter your <b>Email</b> and <b>Password</b>, then click <span class="ui">Sign in</span>.</li>
+    <li>If you signed in with a temporary password, the <b>Set your password</b> screen opens. Enter the temporary password, then your new password twice (at least 10 characters), and click <span class="ui">Set password and continue</span>.</li>
+    <li>If you got an invitation link instead, open it, enter your name and choose a password. You're signed in straight away.</li>
+  </ol>
+  <div class="pair">
+    <figure><img src="img/01-login.jpg" alt="Sign in screen"><figcaption><b>Figure 1.</b> Sign in.</figcaption></figure>
+    <figure><img src="img/02-change-password.jpg" alt="Set your password"><figcaption><b>Figure 2.</b> Set your own password at first sign-in.</figcaption></figure>
+  </div>
+  <div class="callout tip"><b>Forgot your password?</b> Click <span class="ui">Forgot password?</span> on the sign-in screen and follow the emailed link.</div>
+
+  <h3 id="s1-3"><span class="num">1.3</span>Finding your way around</h3>
+  <p>After signing in you land on <b>Standard Ops</b>. The screen has three parts:</p>
+  <ul>
+    <li><b>Sidebar (left).</b> The main menu. <b>Work</b> holds your day-to-day screens and <b>Review</b> holds Approvals and Analytics. Your name and role are at the bottom, with <span class="ui">Logout</span>. Click the small arrow on its edge to collapse it.</li>
+    <li><b>Header (top).</b> The page title, the <b>global search</b> box and the <b>notifications bell</b>, which shows items waiting for you.</li>
+    <li><b>Toolbar (under the header).</b> The current page's own search, sort, filter, view buttons and the <span class="ui">+ Create New</span> button.</li>
+  </ul>
+  <div class="pair" style="grid-template-columns: 3fr 1fr">
+    <figure><img src="img/03-home.jpg" alt="Home screen"><figcaption><b>Figure 3.</b> The Standard Ops page right after signing in.</figcaption></figure>
+    <figure><img src="img/04-sidebar.jpg" alt="Sidebar"><figcaption><b>Figure 4.</b> The sidebar for an Editor.</figcaption></figure>
+  </div>
+  <table>
+    <tr><th>Menu item</th><th>What it's for</th></tr>
+    <tr><td><b>Standard Ops</b></td><td>Create, edit, view, print and share SOPs.</td></tr>
+    <tr><td><b>Kanbans</b></td><td>Kanban cards for parts and re-ordering.</td></tr>
+    <tr><td><b>Skills</b></td><td>The training matrix: who is trained on which SOP, and how well.</td></tr>
+    <tr><td><b>Folders</b></td><td>Organise SOPs into folders and subfolders.</td></tr>
+    <tr><td><b>Checklists</b></td><td>Checklist runs recorded against Checklist SOPs.</td></tr>
+    <tr><td><b>Approvals</b></td><td>Everything you've submitted and where it is in the approval process.</td></tr>
+    <tr><td><b>Analytics</b></td><td>Your activity: views, edits and checklist runs.</td></tr>
+  </table>
+
+  <h3 id="s1-4"><span class="num">1.4</span>How approval works</h3>
+  <p>Nothing you write goes live straight away. Each new SOP or SOP version, and each new or changed kanban card, follows this path:</p>
+  <div class="flow">
+    <span><span class="st draft">Draft</span><span class="who">You (Editor)</span></span><span class="arrow">›</span>
+    <span><span class="st pre">Pending pre-approval</span><span class="who">Pre Approver</span></span><span class="arrow">›</span>
+    <span><span class="st appr">Pending approval</span><span class="who">Approver</span></span><span class="arrow">›</span>
+    <span><span class="st appr">Approved</span><span class="who">Approver / Publisher</span></span><span class="arrow">›</span>
+    <span><span class="st ok">Published</span><span class="who">Live for everyone</span></span>
+  </div>
+  <ul>
+    <li>Your submission is <b>routed to your group(s)</b>. Only Pre Approvers and Approvers in those groups see it.</li>
+    <li>At any stage a reviewer can <span class="st rej" style="font-size:8pt;padding:1px 8px;border-radius:99px;border:1px solid">Reject</span> it with a reason. It comes back to you as a draft so you can fix it and submit again.</li>
+    <li>While a new version is in review, operators keep seeing the <b>current published version</b>. Nothing changes for them until the new one is published.</li>
+    <li>You can't approve your own work.</li>
+  </ul>
+  <div class="callout note"><b>Your organisation's setup</b>Admins decide whether approval is switched on and how many approvers are needed. If approval is off, the editor's main button reads <span class="ui">Finish &amp; Save</span> instead of <span class="ui">Finish &amp; Submit</span>, and your changes publish directly.</div>
+</section>
+
+<!-- ═════════════ 2. SOPs ═════════════ -->
+<section class="sheet" id="s2">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>2 · Standard Ops (SOPs)</span></div>
+  <h2><span class="num">2</span>Standard Ops (SOPs)</h2>
+  <p class="lead">An SOP is a step-by-step procedure with photos, times and safety notes that operators follow, print or scan from a QR code.</p>
+
+  <h3 id="s2-1"><span class="num">2.1</span>Create a new SOP</h3>
+  <ol class="steps">
+    <li>Click <span class="ui">Standard Ops</span> in the sidebar.</li>
+    <li>Click <span class="ui">+ Create New</span> in the toolbar (top right).</li>
+    <li>Enter the <b>Procedure name</b>, e.g. <i>Changeover of die set on press line 2</i>.</li>
+    <li>Optional: pick a <b>Folder</b> and type a <b>Reference No.</b> Leave the reference blank to get the next number automatically (SOP-0001, SOP-0002 …).</li>
+    <li>Click <span class="ui">Create</span>. The SOP editor opens.</li>
+  </ol>
+  <div class="pair">
+    <figure><img src="img/10-sops-empty.jpg" alt="Standard Ops page"><figcaption><b>Figure 5.</b> <span class="ui">+ Create New</span> is at the top right.</figcaption></figure>
+    <figure><img src="img/11-sop-create-dialog.jpg" alt="New SOP dialog"><figcaption><b>Figure 6.</b> Name the SOP and choose a folder.</figcaption></figure>
+  </div>
+
+  <h3 id="s2-2"><span class="num">2.2</span>Name and SOP configuration</h3>
+  <p>The top of the editor holds the SOP's name and its main settings. The bar at the top shows the version being edited (e.g. <code>v1.001 draft</code>) and the <span class="ui">Back</span>, <span class="ui">Cancel</span>, <span class="ui">Save As Draft</span> and <span class="ui">Finish &amp; Submit</span> buttons.</p>
+  <figure><img src="img/12-sop-editor-top.jpg" alt="SOP editor top"><figcaption><b>Figure 7.</b> The SOP editor: name, configuration and the steps area.</figcaption></figure>
+  <table>
+    <tr><th style="width:28%">Setting</th><th>What it does</th></tr>
+    <tr><td><b>Procedure Name</b></td><td>The title operators see (max. 100 characters). A green tick shows it's saved.</td></tr>
+    <tr><td><b>Cover Sheet</b></td><td>Adds a cover page as the first page of the PDF.</td></tr>
+    <tr><td><b>Checklist SOP</b></td><td>Lets operators run the SOP as a checklist and record OK / NOT OK / N/A per step. See <a href="#s3">Checklists</a>.</td></tr>
+    <tr><td><b>Advanced SOP</b></td><td>Gives every step its own <b>title</b>. Use it for long or complex procedures.</td></tr>
+    <tr><td><b>Advanced Options ›</b><br><span style="font-size:8.5pt;color:var(--muted)">(inside the configuration box)</span></td><td>Shows <b>Reference No.</b>, <b>Folder</b>, <b>Change summary</b> (what changed in this version) and the <b>Key points</b> and <b>Collaborate</b> switches.</td></tr>
+  </table>
+  <figure class="tall"><img src="img/13-sop-editor-config.jpg" alt="SOP configuration expanded"><figcaption><b>Figure 8.</b> Advanced SOP switched on and Advanced Options opened. Fill in the <b>Change summary</b> so approvers know what changed.</figcaption></figure>
+
+  <h3 id="s2-3"><span class="num">2.3</span>PDF layout options</h3>
+  <p>The second <span class="ui">Advanced Options ›</span> link, under the configuration box, controls how the printed PDF looks. Each heading opens when you click it:</p>
+  <ul>
+    <li><b>Language Options</b>: the SOP's language.</li>
+    <li><b>Document Control Details</b>: reference number, date raised, revision number and date.</li>
+    <li><b>Presentation &amp; Formatting</b>: PDF orientation, steps per page, borders, header/footer colours, and the colours of the Green/Red QR code PDF.</li>
+    <li><b>Functional Options</b>: mark the whole SOP as critical, add a video link.</li>
+    <li><b>Additional Display Items</b>: e.g. the total time required.</li>
+  </ul>
+  <figure><img src="img/13b-sop-pdf-options.jpg" alt="PDF options"><figcaption><b>Figure 9.</b> Presentation &amp; Formatting opened.</figcaption></figure>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>2 · Standard Ops (SOPs)</span></div>
+  <h3 id="s2-4" style="margin-top:0"><span class="num">2.4</span>Add and arrange steps</h3>
+  <ol class="steps">
+    <li>Click <span class="ui">+ Add New Step</span> at the bottom of the editor.</li>
+    <li>If Advanced SOP is on, type a <b>Step title</b>.</li>
+    <li>Type the <b>Description</b>. Use the toolbar for <b>bold</b>, <i>italic</i>, lists and colour. Keep it short: up to 400 characters fit best in the PDF.</li>
+    <li>Enter the <b>Planned Time</b> as <code>HH:MM:SS</code>. The SOP's cycle time is the total of all steps.</li>
+    <li>Add a picture: click <span class="ui">Add photo</span> or drag an image onto the box. On a phone or tablet you can take a photo directly.</li>
+    <li>Set the switches on the right if needed (see the table below).</li>
+    <li>Repeat for each step.</li>
+  </ol>
+  <figure><img src="img/14-sop-step.jpg" alt="One step"><figcaption><b>Figure 10.</b> One step: photo on the left, title and description in the middle, switches on the right.</figcaption></figure>
+  <table>
+    <tr><th style="width:36%">Step switch</th><th>Use it when…</th></tr>
+    <tr><td><b>Text Only Step</b></td><td>The step needs no photo or video.</td></tr>
+    <tr><td><b>Use OK/Not OK Images/Videos</b></td><td>You want to show the right way and the wrong way. The <b>first</b> image is labelled OK and the <b>second</b> NOT OK.</td></tr>
+    <tr><td><b>Is this step critical?</b></td><td>The step is safety or quality critical. It's highlighted in red for operators and in the PDF.</td></tr>
+    <tr><td><b>Is this step linked to another SOP?</b></td><td>Operators should follow another procedure here. Choose the SOP and operators get a link to it.</td></tr>
+  </table>
+  <h4>Rearranging steps</h4>
+  <ul>
+    <li>Under each step: <span class="ui">Move Up</span>, <span class="ui">Move Down</span> and <span class="ui">Insert Step</span> (adds a step below this one).</li>
+    <li>The bin icon at the top right of a step deletes it.</li>
+    <li><span class="ui">More Options ⌄</span> next to <i>Add Steps in to the procedure</i> lets you tick several steps and delete or move them together.</li>
+    <li>The step count and total <b>Cycle time</b> are shown at the top right of the steps area.</li>
+  </ul>
+  <figure class="tall"><img src="img/15-sop-editor-steps.jpg" alt="Editor with four steps"><figcaption><b>Figure 11.</b> A finished draft with four steps. Step 1 is marked critical.</figcaption></figure>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>2 · Standard Ops (SOPs)</span></div>
+  <h3 id="s2-5" style="margin-top:0"><span class="num">2.5</span>Save as Draft or Finish &amp; Submit</h3>
+  <table>
+    <tr><th style="width:30%">Button</th><th>What happens</th></tr>
+    <tr><td><span class="ui">Save As Draft</span></td><td>Saves your work and keeps you in the editor. Only you and reviewers can see the draft. Come back to it any time with <span class="ui">Edit draft</span>.</td></tr>
+    <tr><td><span class="ui">Finish &amp; Submit</span></td><td>Saves and sends the draft for approval. You need at least one step. You can add a change summary first under Advanced Options.</td></tr>
+    <tr><td><span class="ui">Cancel</span> / <span class="ui">Back</span></td><td>Leaves the editor. Save first, or unsaved changes are lost.</td></tr>
+  </table>
+  <div class="callout tip"><b>Tip</b>Save as draft often while you work on long SOPs, for example after every few steps or photos.</div>
+
+  <h3 id="s2-6"><span class="num">2.6</span>Follow the approval</h3>
+  <p>After you submit, the SOP page opens. The <b>version box</b> (top right) shows the status, e.g. <span class="st pre" style="font-size:8pt;padding:1px 8px;border-radius:99px;border:1px solid">Pending pre-approval</span>, and the group it was <b>Routed to</b>. Further down, the <b>Approvals</b> box lists every decision with the reviewer's name, date and comment.</p>
+  <figure><img src="img/17-sop-pending.jpg" alt="SOP pending approval" style="max-height:120mm"><figcaption><b>Figure 12.</b> Submitted and waiting for pre-approval.</figcaption></figure>
+  <figure><img src="img/18b-sop-pre-approved.jpg" alt="SOP pre-approved" style="max-height:120mm"><figcaption><b>Figure 13.</b> Riley (Pre Approver) has approved it. It's now waiting for the final approval.</figcaption></figure>
+  <ul>
+    <li>You can also follow all your submissions on the <a href="#s6">Approvals</a> page (<b>Mine</b> tab) and from the <b>notifications bell</b>.</li>
+    <li>You'll get an email when your SOP is approved, rejected or published.</li>
+    <li>Changed your mind? Click <span class="ui">Discard draft</span> in the Actions box to throw the draft away.</li>
+  </ul>
+  <div class="callout warn"><b>"Blocked" status</b>If you see <b>Blocked – no eligible Pre Approver / Approver exists for this group</b>, nobody in your group can review the item yet. Admins are notified automatically. Ask your Admin to add a reviewer to the group.</div>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>2 · Standard Ops (SOPs)</span></div>
+  <h3 id="s2-7" style="margin-top:0"><span class="num">2.7</span>If your SOP is rejected</h3>
+  <p>A rejected SOP comes back to you as a <b>draft</b>, with a red <span class="st rej" style="font-size:8pt;padding:1px 8px;border-radius:99px;border:1px solid">Rejected</span> banner showing who rejected it and why.</p>
+  <ol class="steps">
+    <li>Open the SOP from <b>Standard Ops</b> or <b>Approvals → Rejected</b>.</li>
+    <li>Read the reason in the red banner and in the Approvals box.</li>
+    <li>Click <span class="ui">Edit draft</span> (top right), make the changes and click <span class="ui">Finish &amp; Submit</span> again. Or click <span class="ui">Submit for approval</span> on the SOP page if the draft is already fixed.</li>
+  </ol>
+  <figure><img src="img/19-sop-rejected.jpg" alt="Rejected SOP" style="max-height:125mm"><figcaption><b>Figure 14.</b> The reviewer asked for an extra step. The reason is shown in the banner.</figcaption></figure>
+
+  <h3 id="s2-8"><span class="num">2.8</span>View, print and share a published SOP</h3>
+  <p>Once published, the version box shows <span class="st ok" style="font-size:8pt;padding:1px 8px;border-radius:99px;border:1px solid">Published</span> and the side panel offers view, print and share options.</p>
+  <figure><img src="img/20-sop-published.jpg" alt="Published SOP" style="max-height:130mm"><figcaption><b>Figure 15.</b> A published SOP with its steps, approval history and options.</figcaption></figure>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>2 · Standard Ops (SOPs)</span></div>
+  <div class="pair">
+    <figure><img src="img/21-sop-view-print.jpg" alt="View or print options"><figcaption><b>Figure 16.</b> View or Print Options.</figcaption></figure>
+    <figure><img src="img/22-sop-share.jpg" alt="Share options"><figcaption><b>Figure 17.</b> Share Options.</figcaption></figure>
+  </div>
+  <table>
+    <tr><th style="width:38%">Option</th><th>What it does</th></tr>
+    <tr><td><span class="ui">View or Print PDF</span></td><td>Opens the SOP as a PDF, laid out with your PDF options. Print it or save it.</td></tr>
+    <tr><td><span class="ui">View Step By Step</span></td><td>Opens the kiosk view: one large step at a time with <span class="ui">Previous</span> / <span class="ui">Next</span>. Good for a tablet at the workstation.</td></tr>
+    <tr><td><span class="ui">View or Print QR Code</span></td><td>A printable QR code. Scanning it opens the current published version. When a new version is published, the same QR code shows the new one, so you don't need to reprint.</td></tr>
+    <tr><td><span class="ui">View or Print Green/Red Code PDF</span></td><td>A green/red QR code sheet for the workstation, coloured as set in the PDF options.</td></tr>
+    <tr><td><span class="ui">Share PDF / Link</span></td><td>Copies the QR link to your clipboard so you can paste it into an email or chat.</td></tr>
+    <tr><td><span class="ui">Share QR Code</span></td><td>Downloads the QR code as a PNG image.</td></tr>
+    <tr><td><span class="ui">Share Link to View SOP in App</span></td><td>Copies a link to this SOP page in SAWO Playbook. The person must be signed in to open it.</td></tr>
+    <tr><td><i>Issue with PDF? Click to regenerate</i></td><td>Rebuilds the PDF if it looks out of date or broken.</td></tr>
+  </table>
+  <figure><img src="img/23-kiosk.jpg" alt="Step by step view" style="max-height:115mm"><figcaption><b>Figure 18.</b> View Step By Step (kiosk view). Critical steps are flagged <b>CRITICAL</b>.</figcaption></figure>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>2 · Standard Ops (SOPs)</span></div>
+  <h3 id="s2-9" style="margin-top:0"><span class="num">2.9</span>Find SOPs: search, filter, views</h3>
+  <p>The toolbar on the Standard Ops page helps you find any SOP quickly:</p>
+  <ul>
+    <li><b>Search box</b>: type part of a name or reference number.</li>
+    <li><b>Sort</b> (⇅): Oldest, Newest, Date Modified, Alphabetical or Reference No.</li>
+    <li><b>Filter</b> (funnel): by type, status (Published, Draft, Pending approval, Approved, Archived), folder, Checklist SOPs only, and who created it. Click <span class="ui">Clear all</span> to reset.</li>
+    <li><b>Folder</b> icon: jumps to the Folders page.</li>
+    <li><b>⋮ menu</b>: import and export options, if your role allows them.</li>
+    <li><b>Grid / List</b>: cards or a compact table. Your choice is remembered.</li>
+  </ul>
+  <div class="pair">
+    <figure><img src="img/24-sops-grid.jpg" alt="Grid view"><figcaption><b>Figure 19.</b> Grid view. Each card shows status, reference, version, folder and dates.</figcaption></figure>
+    <figure><img src="img/25-sops-list.jpg" alt="List view"><figcaption><b>Figure 20.</b> List view.</figcaption></figure>
+  </div>
+  <figure class="half"><img src="img/26-sops-filter.jpg" alt="Filter"><figcaption><b>Figure 21.</b> The filter panel.</figcaption></figure>
+
+  <h3 id="s2-10"><span class="num">2.10</span>The SOP card menu</h3>
+  <p>Click the <b>…</b> button on any SOP card (top right of the card) for quick actions:</p>
+  <div class="pair" style="grid-template-columns: 1fr 1.1fr">
+    <figure><img src="img/27-sop-card-menu.jpg" alt="Card menu"><figcaption><b>Figure 22.</b> The card menu.</figcaption></figure>
+    <table style="margin-top:8px">
+      <tr><th>Action</th><th>Use</th></tr>
+      <tr><td><b>Edit</b></td><td>Start a new draft version.</td></tr>
+      <tr><td><b>Duplicate</b></td><td>Copy the SOP as a starting point for a new one.</td></tr>
+      <tr><td><b>Update Training Record</b></td><td>Record an operator's training. See <a href="#s7">Skills</a>.</td></tr>
+      <tr><td><b>Training History</b></td><td>Who was trained on this SOP, when, and by whom.</td></tr>
+      <tr><td><b>Add to Folder</b></td><td>Move the SOP into a folder.</td></tr>
+      <tr><td><b>Change History</b></td><td>All versions with their change summaries.</td></tr>
+      <tr><td><b>View or Print PDF</b></td><td>Opens the published PDF.</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>2 · Standard Ops (SOPs)</span></div>
+  <h3 id="s2-11" style="margin-top:0"><span class="num">2.11</span>Update a published SOP</h3>
+  <p>You never edit a published SOP directly. You create a <b>new version</b>, and the published one stays live until the new one is approved.</p>
+  <ol class="steps">
+    <li>Open the SOP and click <span class="ui">Edit</span> (top right), or use <b>Edit</b> in the card menu.</li>
+    <li>A new draft version opens (e.g. <code>v1.002 draft</code>). Make your changes and write a <b>Change summary</b> under Advanced Options.</li>
+    <li>Click <span class="ui">Finish &amp; Submit</span>. Or click <span class="ui">Save As Draft</span> now and submit later with <span class="ui">Submit for approval</span> on the SOP page.</li>
+  </ol>
+  <figure><img src="img/29-sop-new-draft.jpg" alt="New draft of published SOP" style="max-height:120mm"><figcaption><b>Figure 23.</b> A new draft of a published SOP. The Actions box offers <b>Submit for approval</b> and <b>Discard draft</b>.</figcaption></figure>
+  <figure><img src="img/30-change-history.jpg" alt="Change history" style="max-height:105mm"><figcaption><b>Figure 24.</b> Change History lists every version, who created and published it, and its change summary.</figcaption></figure>
+  <div class="callout note"><b>Operators are not affected</b>Until the new version is published, operators, QR codes and printed PDFs keep showing the current published version.</div>
+</section>
+
+<!-- ═════════════ 3. CHECKLISTS ═════════════ -->
+<section class="sheet" id="s3">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>3 · Checklists</span></div>
+  <h2><span class="num">3</span>Checklists</h2>
+  <p class="lead">A Checklist SOP lets operators record a result for every step, e.g. a daily pre-use inspection.</p>
+
+  <h3 id="s3-1"><span class="num">3.1</span>Make an SOP a Checklist SOP</h3>
+  <p>In the SOP editor, switch on <b>Checklist SOP</b> under SOP Configuration (<a href="#s2-2">section 2.2</a>), then submit as usual. You can only start a checklist run on a <b>published</b> Checklist SOP.</p>
+
+  <h3 id="s3-2"><span class="num">3.2</span>Run a checklist</h3>
+  <ol class="steps">
+    <li>Open the published Checklist SOP and click <span class="ui">Start checklist</span> in the Actions box.</li>
+    <li>For each step click <span class="ui">OK</span>, <span class="ui">NOT OK</span> or <span class="ui">N/A</span>. Add a <b>Comment</b> or a <span class="ui">Photo</span> where useful, especially for NOT OK.</li>
+    <li>The counter at the top shows how many steps are answered (e.g. <code>4/4 answered</code>).</li>
+    <li>When every step is answered, click <span class="ui">Complete checklist</span>. To stop without finishing, click <span class="ui">Abandon</span>.</li>
+  </ol>
+  <div class="pair">
+    <figure><img src="img/31-checklist-run.jpg" alt="Checklist run"><figcaption><b>Figure 25.</b> A new checklist run.</figcaption></figure>
+    <figure><img src="img/32-checklist-answered.jpg" alt="Checklist answered"><figcaption><b>Figure 26.</b> All steps answered, ready to complete.</figcaption></figure>
+  </div>
+
+  <h3 id="s3-3"><span class="num">3.3</span>Review checklist runs</h3>
+  <p>The <b>Checklists</b> page lists every run with the operator, start time, progress and status. As an Editor you see everyone's runs. Use the tabs to filter by <b>In progress</b>, <b>Completed</b>, <b>Abandoned</b> or <b>With NOT OK steps</b>, and click <span class="ui">View</span> to open a run.</p>
+  <figure><img src="img/33-checklists.jpg" alt="Checklists list" style="max-height:105mm"><figcaption><b>Figure 27.</b> The Checklists page.</figcaption></figure>
+</section>
+
+<!-- ═════════════ 4. FOLDERS ═════════════ -->
+<section class="sheet" id="s4">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>4 · Folders</span></div>
+  <h2><span class="num">4</span>Folders</h2>
+  <p class="lead">Folders group SOPs by area, line or department. Folders can have subfolders.</p>
+  <h4>Create a folder</h4>
+  <ol class="steps">
+    <li>Click <span class="ui">Folders</span> in the sidebar.</li>
+    <li>Type a name in <b>New folder name</b>.</li>
+    <li>Choose where it goes: <b>At the top level</b>, or inside another folder to make a subfolder.</li>
+    <li>Click <span class="ui">+ Create folder</span>.</li>
+  </ol>
+  <h4>Manage folders</h4>
+  <p>Each folder row has buttons on the right:</p>
+  <ul>
+    <li><b>Add subfolder</b> (folder + icon): create a folder inside this one.</li>
+    <li><b>Rename</b> (pencil).</li>
+    <li><b>Move to…</b>: move the folder, with everything in it, under another folder.</li>
+    <li><b>Delete</b> (bin).</li>
+  </ul>
+  <p>Click a folder name to see its SOPs, including those in subfolders. <span class="ui">SOPs not in a folder</span> (top right) lists the SOPs still to be filed. To put an SOP into a folder, use <b>Add to Folder</b> in the SOP card menu, or set the folder in the editor's Advanced Options.</p>
+  <div class="pair">
+    <figure><img src="img/40-folders.jpg" alt="Folders"><figcaption><b>Figure 28.</b> The Folders page.</figcaption></figure>
+    <figure><img src="img/42-folders-tree.jpg" alt="Folder with subfolder"><figcaption><b>Figure 29.</b> "Press line 2" created as a subfolder of Assembly.</figcaption></figure>
+  </div>
+</section>
+
+<!-- ═════════════ 5. KANBANS ═════════════ -->
+<section class="sheet" id="s5">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>5 · Kanban cards</span></div>
+  <h2><span class="num">5</span>Kanban cards</h2>
+  <p class="lead">A kanban card describes a part: what it is, where it's stored, when to re-order and how. The QR code on the back of the printed card opens the supplier's web page, an order email or an ordering SOP.</p>
+
+  <h3 id="s5-1"><span class="num">5.1</span>Create a kanban card</h3>
+  <ol class="steps">
+    <li>Click <span class="ui">Kanbans</span> in the sidebar, then <span class="ui">+ Create New</span>.</li>
+    <li>Add a picture on the left: click <span class="ui">Upload photo</span>, drag an image in, or paste one (Ctrl+V).</li>
+    <li>Choose the <b>Kanban Type</b>: <i>Template 01</i>, or <i>Template 02</i> if you need price and carriage.</li>
+    <li>Fill in the <b>Part Description</b> and choose the <b>QR Code Options</b> (see below).</li>
+    <li>Fill in the part details. Only <b>Sawo Inc Part Number</b> is required.</li>
+    <li>Optional: choose a <b>PDF Header Color</b>, add custom fields and <b>Tags</b> (type a tag and press Enter).</li>
+    <li>Click <span class="ui">Save draft</span>.</li>
+  </ol>
+  <div class="pair">
+    <figure><img src="img/51-kanban-new.jpg" alt="Empty kanban form"><figcaption><b>Figure 30.</b> The Add Kanban form.</figcaption></figure>
+    <figure><img src="img/52-kanban-filled.jpg" alt="Filled kanban form"><figcaption><b>Figure 31.</b> The form filled in for a bearing.</figcaption></figure>
+  </div>
+  <table>
+    <tr><th style="width:32%">QR code option</th><th>Scanning the card's QR code…</th></tr>
+    <tr><td><b>Ordering Item URL</b></td><td>opens the supplier's web page. Paste the full link (https://…).</td></tr>
+    <tr><td><b>SOP</b></td><td>opens the chosen ordering SOP.</td></tr>
+    <tr><td><b>Email</b></td><td>opens a new order email to the address you enter, e.g. purchasing@…</td></tr>
+  </table>
+  <table>
+    <tr><th style="width:32%">Field</th><th>Example / note</th></tr>
+    <tr><td>Sawo Inc Part Number *</td><td><code>BRG-6204</code>. Required. Shown as the card's name.</td></tr>
+    <tr><td>Supplier / Supplier Part Number</td><td><code>SKF</code> / <code>6204-2RSH</code></td></tr>
+    <tr><td>Used For</td><td>Where the part is used, e.g. <i>Conveyor drive roller</i>.</td></tr>
+    <tr><td>Order When / Order Qty</td><td>The re-order point and quantity, e.g. <i>2 left</i> / <i>10</i>.</td></tr>
+    <tr><td>Delivery Time / Location</td><td><i>3 days</i> / <i>Rack A3</i></td></tr>
+    <tr><td>Barcode Number (Code 128)</td><td>Optional. Printed as a barcode on the card.</td></tr>
+    <tr><td>Price / Carriage</td><td>Template 02 only.</td></tr>
+  </table>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>5 · Kanban cards</span></div>
+  <h3 id="s5-2" style="margin-top:0"><span class="num">5.2</span>Submit a new card for review</h3>
+  <p>A brand-new card doesn't appear on the Kanbans page until it's published. Until then you'll find the draft on the <b>Approvals</b> page.</p>
+  <ol class="steps">
+    <li>Click <span class="ui">Approvals</span> in the sidebar and open the <b>Mine</b> tab. Your new card is listed with stage <b>Draft</b>.</li>
+    <li>Click <span class="ui">Open</span>.</li>
+    <li>Check the details and click <span class="ui">Submit for review</span>. The status changes to <b>Pending pre-approval</b>.</li>
+  </ol>
+  <figure><img src="img/53a-approvals-mine.jpg" alt="Approvals mine" style="max-height:100mm"><figcaption><b>Figure 32.</b> The new card in Approvals → Mine.</figcaption></figure>
+  <div class="pair">
+    <figure><img src="img/53-kanban-draft.jpg" alt="Draft kanban"><figcaption><b>Figure 33.</b> The draft card with <b>Submit for review</b>.</figcaption></figure>
+    <figure><img src="img/54-kanban-submitted.jpg" alt="Submitted kanban"><figcaption><b>Figure 34.</b> Submitted. It's now with the reviewers.</figcaption></figure>
+  </div>
+  <div class="callout note"><b>Kanban approvals</b>Kanban changes follow the same Draft → Pre-approval → Approval → Published path as SOPs, but a <b>single approval</b> is always enough. If a reviewer rejects your card, it shows under <b>Approvals → Rejected</b> with the reason.</div>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>5 · Kanban cards</span></div>
+  <h3 id="s5-3" style="margin-top:0"><span class="num">5.3</span>Published cards: view, print, share</h3>
+  <p>Once published, the card appears on the <b>Kanbans</b> page. Search by part, supplier or tag, and use sort and filter like on the SOP page. Click a card to open it.</p>
+  <figure><img src="img/55-kanbans-list.jpg" alt="Kanbans list" style="max-height:95mm"><figcaption><b>Figure 35.</b> The Kanbans page with the published card.</figcaption></figure>
+  <figure><img src="img/56-kanban-detail.jpg" alt="Kanban detail" style="max-height:130mm"><figcaption><b>Figure 36.</b> The card page: picture, approval status, all details, and the View or Print Options.</figcaption></figure>
+  <ul>
+    <li><span class="ui">View or Print PDF</span>: the printable kanban card, front and back with the QR code.</li>
+    <li><span class="ui">Share PDF</span>: opens your device's share menu with the card's PDF file (on a computer, it downloads the PDF).</li>
+    <li>The <b>⋯</b> menu on each card in the list offers <b>Edit</b>, <b>Duplicate</b> (start a new card from this one), <b>Change History</b> and <b>View or Print PDF</b>.</li>
+  </ul>
+</section>
+
+<section class="sheet">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>5 · Kanban cards</span></div>
+  <h3 id="s5-4" style="margin-top:0"><span class="num">5.4</span>Change an existing card</h3>
+  <ol class="steps">
+    <li>On the Kanbans page click the card's <b>⋯</b> menu and choose <b>Edit</b>, or open the card and click <span class="ui">Edit</span>.</li>
+    <li>Change what you need (e.g. a new <b>Order Qty</b>) and click <span class="ui">Save draft</span>. You go back to the card page, and the <b>Approval status</b> shows <b>Draft</b>.</li>
+    <li>Click <span class="ui">Submit for review</span>. The status shows who it's waiting on.</li>
+  </ol>
+  <figure class="small" style="text-align:left"><img src="img/57-kanban-card-menu.jpg" alt="Kanban card menu"><figcaption><b>Figure 37.</b> The card menu.</figcaption></figure>
+  <div class="pair">
+    <figure><img src="img/58-kanban-change-draft.jpg" alt="Kanban change draft"><figcaption><b>Figure 38.</b> A change saved as a draft.</figcaption></figure>
+    <figure><img src="img/59-kanban-change-submitted.jpg" alt="Kanban change submitted"><figcaption><b>Figure 39.</b> Submitted. It's waiting on Pre Approval.</figcaption></figure>
+  </div>
+  <div class="callout tip"><b>The live card stays the same</b>Until your change is published, the card, its PDF and its QR code keep showing the current details. While a change is in review the <span class="ui">Edit</span> button is disabled. You can edit again once the review is finished.</div>
+</section>
+
+<!-- ═════════════ 6. APPROVALS ═════════════ -->
+<section class="sheet" id="s6">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>6 · Approvals</span></div>
+  <h2><span class="num">6</span>The Approvals page</h2>
+  <p class="lead">Everything you've submitted, and where it is now, for SOPs and kanbans in one place.</p>
+  <figure><img src="img/18-approvals-editor.jpg" alt="Approvals" style="max-height:110mm"><figcaption><b>Figure 40.</b> Approvals, Mine tab: one SOP waiting for pre-approval.</figcaption></figure>
+  <ul>
+    <li>The <b>summary tiles</b> count items that <b>Need my action</b>, are <b>Blocked</b>, are <b>Ready to publish</b>, and were <b>Submitted by me</b>.</li>
+    <li>The <b>type switch</b> (All types / STD OPS / Kanbans) narrows the list. <span class="ui">Refresh</span> reloads it.</li>
+    <li>The <b>tabs</b> filter by stage. As an Editor you'll mostly use these:</li>
+  </ul>
+  <table>
+    <tr><th style="width:30%">Tab</th><th>Shows</th></tr>
+    <tr><td><b>Mine</b></td><td>Everything you created that isn't published yet, including drafts of brand-new kanban cards.</td></tr>
+    <tr><td><b>Rejected</b></td><td>Your items that a reviewer sent back, with the reason.</td></tr>
+    <tr><td><b>Blocked</b></td><td>Your items that have no eligible reviewer in their group (ask your Admin).</td></tr>
+    <tr><td><b>Pre Approval / Final Approval / Approved – Ready to Publish</b></td><td>Items at each stage that you can see.</td></tr>
+  </table>
+  <p>Click <span class="ui">Open</span> on a row to go to the item. When everything is done, the list shows <i>Nothing is waiting</i>:</p>
+  <figure><img src="img/64-approvals-done.jpg" alt="Approvals empty" style="max-height:95mm"><figcaption><b>Figure 41.</b> Everything has been published.</figcaption></figure>
+</section>
+
+<!-- ═════════════ 7. SKILLS ═════════════ -->
+<section class="sheet" id="s7">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>7 · Skills &amp; training</span></div>
+  <h2><span class="num">7</span>Skills &amp; training records</h2>
+  <p class="lead">The Skills page is a training matrix: one row per person and one column per published SOP.</p>
+  <p>Each cell shows a person's competency level on an SOP:</p>
+  <table>
+    <tr><th style="width:12%">Level</th><th>Meaning</th></tr>
+    <tr><td><b>0</b></td><td>No Training</td></tr>
+    <tr><td><b>1</b></td><td>Knows Basic Principles</td></tr>
+    <tr><td><b>2</b></td><td>Demonstrates Basic Principles</td></tr>
+    <tr><td><b>3</b></td><td>Able to Work Alone</td></tr>
+    <tr><td><b>4</b></td><td>Able to Train Others</td></tr>
+  </table>
+  <h4>Record training</h4>
+  <p>You can record training for the operators your Admin has assigned to you as their trainer.</p>
+  <ol class="steps">
+    <li>On the Skills page, click the person's cell under the SOP. Or, on Standard Ops, open the SOP card menu (<b>…</b>) and choose <b>Update Training Record</b>.</li>
+    <li>Choose the <b>Associate</b> and the <b>Competency level</b>, and add <b>Notes</b> if useful.</li>
+    <li>Click <span class="ui">Save</span>.</li>
+  </ol>
+  <div class="pair" style="grid-template-columns: 1fr 1.4fr">
+    <figure><img src="img/28-training-record.jpg" alt="Update training record"><figcaption><b>Figure 42.</b> Update Training Record.</figcaption></figure>
+    <figure><img src="img/60-skills.jpg" alt="Skills matrix"><figcaption><b>Figure 43.</b> The skills matrix and training history.</figcaption></figure>
+  </div>
+  <div class="callout note"><b>Reassessment</b>Training is recorded against the SOP's published version. When a new version is published, a small dot marks people assessed on an older version. They should be reassessed. The <b>Need reassessment</b> tile counts them.</div>
+</section>
+
+<!-- ═════════════ 8–10 ═════════════ -->
+<section class="sheet" id="s8">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>8–10 · Analytics, Search, Profile</span></div>
+  <h2><span class="num">8</span>Analytics</h2>
+  <p>Analytics shows <b>your activity</b>: SOPs published, drafts in review, kanban cards and checklists completed, plus a daily activity chart, your most viewed SOPs and a list of events. Use the period buttons (7 days, 30 days, 90 days, 12 months) to change the time range.</p>
+  <figure><img src="img/61-analytics.jpg" alt="Analytics" style="max-height:105mm"><figcaption><b>Figure 44.</b> Analytics.</figcaption></figure>
+
+  <h2 id="s9" style="margin-top:24px"><span class="num">9</span>Search</h2>
+  <p>Type in the <b>global search box</b> in the header (<i>Search SOPs, kanbans, skills…</i>) and press <kbd>Enter</kbd>. Results are grouped into procedures and kanban cards. It searches names, reference numbers and the text of SOPs.</p>
+  <figure><img src="img/62-search.jpg" alt="Search results" style="max-height:95mm"><figcaption><b>Figure 45.</b> Search results for "die".</figcaption></figure>
+</section>
+
+<section class="sheet" id="s10">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>10 · Your profile</span></div>
+  <h2><span class="num">10</span>Your profile, password &amp; 2FA</h2>
+  <p>Click your name at the bottom of the sidebar to open <b>My profile</b>.</p>
+  <ul>
+    <li><b>Details</b>: change the name other people see on SOPs, approvals and checklists, then click <span class="ui">Save details</span>.</li>
+    <li><b>Change password</b>: enter your current password and a new one (at least 10 characters). This signs you out on your other devices.</li>
+    <li><b>Two-factor authentication</b>: click <span class="ui">Set up two-factor</span>, scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…) and enter the 6-digit code. From then on you'll be asked for a code at every sign-in.</li>
+  </ul>
+  <figure><img src="img/63-profile.jpg" alt="Profile" style="max-height:120mm"><figcaption><b>Figure 46.</b> My profile.</figcaption></figure>
+  <div class="callout tip"><b>Signing out</b>Click <span class="ui">Logout</span> at the bottom of the sidebar, especially on shared computers.</div>
+</section>
+
+<!-- ═════════════ 11. FAQ ═════════════ -->
+<section class="sheet" id="s11">
+  <div class="sheet-head"><span><img src="img/logo-sawo.webp" alt="">SAWO Playbook · Editor User Guide</span><span>11–12 · FAQ &amp; quick reference</span></div>
+  <h2><span class="num">11</span>Troubleshooting &amp; FAQ</h2>
+  <table>
+    <tr><th style="width:38%">Question</th><th>Answer</th></tr>
+    <tr><td>I can't find the new kanban card I just saved.</td><td>New cards only appear on the Kanbans page after they're published. Find the draft under <b>Approvals → Mine</b> and submit it (<a href="#s5-2">5.2</a>).</td></tr>
+    <tr><td>My SOP says <b>Blocked</b>.</td><td>Nobody in your group can pre-approve or approve it. Admins are notified automatically, but tell your Admin too.</td></tr>
+    <tr><td>Why can't I approve my own SOP?</td><td>Someone else must check your work. You'll see <i>You submitted this version, so you cannot approve it.</i></td></tr>
+    <tr><td>The <span class="ui">Edit</span> button is greyed out.</td><td>A change is already in review. Wait until it's approved or rejected, or ask the reviewer.</td></tr>
+    <tr><td>I don't see a button or menu item shown in this guide.</td><td>Your Admin may have changed what Editors can do, or hidden a menu item. Ask your Admin.</td></tr>
+    <tr><td>The PDF looks out of date.</td><td>Click <i>Issue with PDF? Click to regenerate</i> under the View or Print Options.</td></tr>
+    <tr><td>The step description shows a warning.</td><td>Descriptions longer than about 400 characters may not fit well in some PDF layouts. Shorten the text or split the step.</td></tr>
+    <tr><td>I can't record training for someone.</td><td>You can only assess people your Admin has assigned to you, and only on published SOPs.</td></tr>
+    <tr><td>I was signed out unexpectedly.</td><td>Your session expires after a period of inactivity, or when your password or role changes. Sign in again.</td></tr>
+  </table>
+
+  <h2 id="s12" style="margin-top:22px"><span class="num">12</span>Quick reference</h2>
+  <div class="qr">
+    <div><b>New SOP</b>Standard Ops → + Create New → name → Create → add steps → Finish &amp; Submit</div>
+    <div><b>Change a published SOP</b>Open SOP → Edit → change → Change summary → Finish &amp; Submit</div>
+    <div><b>Fix a rejected SOP</b>Approvals → Rejected → open → Edit draft → fix → Finish &amp; Submit</div>
+    <div><b>Print / QR</b>Open SOP → View or Print PDF / View or Print QR Code</div>
+    <div><b>New kanban card</b>Kanbans → + Create New → fill in → Save draft → Approvals → Mine → Open → Submit for review</div>
+    <div><b>Change a kanban card</b>Kanbans → ⋯ → Edit → Save draft → Submit for review</div>
+    <div><b>Run a checklist</b>Open a published Checklist SOP → Start checklist → OK / NOT OK / N/A → Complete checklist</div>
+    <div><b>Record training</b>Skills → click cell, or SOP card ⋯ → Update Training Record</div>
+    <div><b>File SOPs</b>Folders → New folder name → Create folder; SOP card ⋯ → Add to Folder</div>
+    <div><b>Find anything</b>Header search → type → Enter</div>
+  </div>
+</section>
+
+</body>
+</html>

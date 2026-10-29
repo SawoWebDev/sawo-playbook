@@ -135,6 +135,12 @@ export default function KanbanApprovalPage() {
 
         <section className="card" aria-label="Actions" style={{ gridColumn: '1 / -1' }}>
           <div className="row" style={{ flexWrap: 'wrap' }}>
+            {/* A brand-new card has no live card page yet, so its draft is submitted from here. */}
+            {actions.submit && (
+              <button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={() => act('/submit', {}, 'Submitted for review.')}>
+                Submit for review
+              </button>
+            )}
             {actions.preApprove && (
               <button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={() => setDialog('preApprove')}>Pre-approve</button>
             )}
@@ -149,7 +155,7 @@ export default function KanbanApprovalPage() {
             {actions.reject && (
               <button className="btn btn-danger btn-sm" type="button" disabled={busy} onClick={() => setDialog('reject')}>Reject</button>
             )}
-            {!actions.preApprove && !actions.approve && !actions.publish && !actions.reject && (
+            {!actions.submit && !actions.preApprove && !actions.approve && !actions.publish && !actions.reject && (
               <span className="muted">No action is available to you on this change right now.</span>
             )}
           </div>
