@@ -98,7 +98,7 @@ const qrOrPlaceholder = (x: number, y: number, size: number, k: PrintableKanban)
     ? box(x, y, size, size, `<img src="${k.qrUri}" alt="QR">`, '', 'pic')
     : box(x, y, size, size, `<span style="font-size:${pt(6.8)}">no order url</span>`, `background:${FRAME};`, 'center');
 
-const barcode = (x: number, y: number, w: number, hgt: number, value: string) => box(x, y, w, hgt, code128Svg(value), '', 'bar');
+const barcode = (x: number, y: number, w: number, hgt: number, value: string) => box(x, y, w, hgt, code128Svg(value), 'background:#fff;', 'bar');
 
 const logo = (x: number, y: number, hgt: number) => `<img class="abs" src="${SAWO_LOGO_DATA_URI}" alt="SAWO" style="left:${x}mm;top:${y}mm;height:${hgt}mm;width:auto">`;
 
