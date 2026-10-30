@@ -87,6 +87,11 @@ export class MfaDisableDto {
   @IsString() @MinLength(6) @MaxLength(8) code!: string;
 }
 
+/** Admin sets a new sign-in password for someone else. */
+export class AdminSetPasswordDto {
+  @IsString() @MinLength(10) @MaxLength(200) newPassword!: string;
+}
+
 export class UpdateUserDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(200) name?: string;
   @IsOptional() @IsEmail() @MaxLength(320) email?: string;

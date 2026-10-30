@@ -3,7 +3,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { AuthUser } from '../common/auth-user';
 import { BlockWhileImpersonating, CurrentUser, ReqMeta, RequestMeta, RequirePermission } from '../common/decorators';
 import { Permission } from '../common/permissions';
-import { BulkInviteDto, ChangeRoleDto, CreateUserDto, InviteDto, SetExtraPermissionsDto, UpdateUserDto } from './users.dto';
+import { AdminSetPasswordDto, BulkInviteDto, ChangeRoleDto, CreateUserDto, InviteDto, SetExtraPermissionsDto, UpdateUserDto } from './users.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -114,6 +114,15 @@ export class UsersController {
   @RequirePermission(Permission.UsersManage)
   resetMfa(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqMeta() meta: RequestMeta) {
     return this.users.resetMfa(actor, id, meta);
+  }
+
+  /** Admin sets a new password for someone else. users.manage is Admin-only, so no other role can reach this. */
+  @Post(':id/password')
+  @HttpCode(204)
+  @BlockWhileImpersonating()
+  @RequirePermission(Permission.UsersManage)
+  async setPassword(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminSetPasswordDto, @ReqMeta() meta: RequestMeta) {
+    await this.users.setPassword(actor, id, dto.newPassword, meta);
   }
 
   @Get(':id')

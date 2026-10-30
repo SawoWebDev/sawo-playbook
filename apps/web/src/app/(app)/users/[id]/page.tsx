@@ -58,6 +58,9 @@ export default function UserDetailPage() {
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [extras, setExtras] = useState<string[]>([]);
   const [matrix, setMatrix] = useState<RolesMatrix | null>(null);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [newPw, setNewPw] = useState('');
+  const [repeatPw, setRepeatPw] = useState('');
 
   const load = useCallback(async () => {
     const d = await api<UserDetail>(`/users/${id}`);
@@ -133,6 +136,22 @@ export default function UserDetailPage() {
 
   const saveExtras = () => {
     run(() => api(`/users/${id}/permissions`, { method: 'PATCH', body: { permissions: extras } }), 'Additional access saved. It applies from their next request.');
+  };
+
+  const closePassword = () => {
+    setPwOpen(false);
+    setNewPw('');
+    setRepeatPw('');
+  };
+
+  const savePassword = (e: FormEvent) => {
+    e.preventDefault();
+    if (newPw.length < 10) return setError('The new password must be at least 10 characters.');
+    if (newPw !== repeatPw) return setError('The two passwords do not match.');
+    run(async () => {
+      await api(`/users/${id}/password`, { method: 'POST', body: { newPassword: newPw } });
+      closePassword();
+    }, 'Password changed. The person is signed out everywhere.');
   };
 
   const confirmAndRun = () => {
@@ -254,7 +273,22 @@ export default function UserDetailPage() {
               {person.mfaEnabled && (
                 <button className="btn btn-sm" type="button" disabled={busy} onClick={() => setPending({ kind: 'mfa' })}>Reset two-factor sign-in</button>
               )}
+              {person.status !== 'removed' && person.id !== me?.id && !pwOpen && (
+                <button className="btn btn-sm" type="button" disabled={busy} onClick={() => setPwOpen(true)}>Change password</button>
+              )}
             </div>
+            {pwOpen && (
+              <form onSubmit={savePassword} style={{ marginTop: 14 }}>
+                <label htmlFor="u-new-pw">New password</label>
+                <input id="u-new-pw" type="password" autoComplete="new-password" value={newPw} onChange={(e) => setNewPw(e.target.value)} disabled={busy} minLength={10} maxLength={200} required autoFocus />
+                <label htmlFor="u-repeat-pw">Repeat new password</label>
+                <input id="u-repeat-pw" type="password" autoComplete="new-password" value={repeatPw} onChange={(e) => setRepeatPw(e.target.value)} disabled={busy} minLength={10} maxLength={200} required />
+                <div className="row" style={{ justifyContent: 'flex-end', marginTop: 10 }}>
+                  <button className="btn btn-sm" type="button" disabled={busy} onClick={closePassword}>Cancel</button>
+                  <button className="btn btn-sm btn-primary" type="submit" disabled={busy}>Save password</button>
+                </div>
+              </form>
+            )}
             {person.status !== 'removed' && (
               <div style={{ marginTop: 22, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                 <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Removing someone blocks their sign-in. Their history is kept.</p>
@@ -262,7 +296,7 @@ export default function UserDetailPage() {
               </div>
             )}
             <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>
-              Sessions are ended by suspend, remove, role change, email change and two-factor reset. The API does not offer a per-session list.
+              Sessions are ended by suspend, remove, role change, email change, password change and two-factor reset. The API does not offer a per-session list.
             </p>
           </section>
 

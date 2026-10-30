@@ -188,6 +188,25 @@ export class UsersService {
     return this.get(actor, id);
   }
 
+  /**
+   * Admin sets a new sign-in password for someone else. Clears any lockout and temporary-password requirement, and
+   * revokes the person's sessions so the old password stops working everywhere. The password is never audited.
+   */
+  async setPassword(actor: AuthUser, id: string, newPassword: string, meta: RequestMeta) {
+    const target = await this.findTarget(actor, id);
+    this.assertCanManage(actor, target);
+    if (target.status === 'removed') throw new BadRequestException('User has been removed');
+    const passwordHash = await argon2.hash(newPassword);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { passwordHash, passwordMustChange: false, failedLogins: 0, lockedUntil: null } });
+      await this.tokens.revokeAllForUser(id, 'password_set_by_admin', tx);
+      await this.audit.record(
+        { action: AuditAction.PasswordReset, organizationId: actor.organizationId, actorId: actor.id, entityType: 'user', entityId: id, metadata: { via: 'admin' }, ...meta },
+        tx,
+      );
+    });
+  }
+
   listInvitations(actor: AuthUser) {
     return this.prisma.invitation.findMany({
       where: { organizationId: actor.organizationId, status: 'pending' },

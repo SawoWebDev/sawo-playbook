@@ -85,6 +85,18 @@ describe('profile edits', () => {
     expect(row.metadata).toMatchObject({ fields: ['name'], emailChanged: false });
   });
 
+  it('an Admin can set another person\'s password; it signs them out and the new password works', async () => {
+    const u = await a.addUser('EDITOR', 'pw-set');
+    const newPassword = 'brand-new-password-123';
+    await ctx.http().post(`/api/users/${u.user.id}/password`).set(a.users.EDITOR.auth).send({ newPassword }).expect(403);
+    await ctx.http().post(`/api/users/${u.user.id}/password`).set(a.users.ADMIN.auth).send({ newPassword: 'short' }).expect(400);
+    await ctx.http().post(`/api/users/${u.user.id}/password`).set(a.users.ADMIN.auth).send({ newPassword }).expect(204);
+    await ctx.http().get('/api/auth/me').set(u.auth).expect(401);
+    await ctx.http().post('/api/auth/login').send({ email: u.user.email, password: newPassword }).expect(200);
+    const peer = await a.addUser('ADMIN', 'pw-peer');
+    await ctx.http().post(`/api/users/${peer.user.id}/password`).set(a.users.ADMIN.auth).send({ newPassword }).expect(204);
+  });
+
   it('invalid profile input is refused', async () => {
     const u = await a.addUser('OPERATOR', 'invalid');
     await ctx.http().patch(`/api/users/${u.user.id}`).set(a.users.ADMIN.auth).send({ email: 'not-an-email' }).expect(400);
