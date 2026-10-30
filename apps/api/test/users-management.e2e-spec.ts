@@ -75,9 +75,10 @@ describe('profile edits', () => {
     await ctx.http().get('/api/auth/me').set(u.auth).expect(401);
   });
 
-  it('an Admin cannot edit another Admin; the change is audited', async () => {
+  it('an Admin can edit another Admin but not the Owner; the change is audited', async () => {
     const other = await a.addUser('ADMIN', 'peer-admin');
-    await ctx.http().patch(`/api/users/${other.user.id}`).set(a.users.ADMIN.auth).send({ name: 'x' }).expect(403);
+    await ctx.http().patch(`/api/users/${other.user.id}`).set(a.users.ADMIN.auth).send({ name: 'Peer Admin' }).expect(200);
+    await ctx.http().patch(`/api/users/${a.users.OWNER.user.id}`).set(a.users.ADMIN.auth).send({ name: 'x' }).expect(403);
     const u = await a.addUser('OPERATOR', 'audited');
     await ctx.http().patch(`/api/users/${u.user.id}`).set(a.users.ADMIN.auth).send({ name: 'Audited Name' }).expect(200);
     const row = await ctx.prisma.auditLog.findFirstOrThrow({ where: { organizationId: a.organizationId, action: 'user.updated', entityId: u.user.id } });

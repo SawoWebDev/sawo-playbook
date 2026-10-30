@@ -129,7 +129,6 @@ describe('role changes use the same five-role set and group rule', () => {
   });
 
   it('an Admin without groups cannot be given a non-Admin role until a group is assigned', async () => {
-    // Admins cannot modify other Admins, so the change is made by the full-access account.
     const admin2 = await t.addUser('ADMIN', 'demote-me');
     await ctx.http().patch(`/api/users/${admin2.user.id}/role`).set(t.users.OWNER.auth).send({ role: 'EDITOR' }).expect(400);
     await ctx.prisma.groupMember.create({ data: { groupId: general.id, userId: admin2.user.id, organizationId: t.organizationId } });

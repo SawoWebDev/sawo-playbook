@@ -160,7 +160,7 @@ export class UsersService {
 
   /**
    * Name and email. Changing the email revokes the user's sessions, because the address is their login.
-   * Admins cannot edit other Admins (same rule as role changes).
+   * Admins can edit other Admins, but not the Owner account (same rule as role changes).
    */
   async updateProfile(actor: AuthUser, id: string, dto: { name?: string; email?: string }, meta: RequestMeta) {
     const target = await this.findTarget(actor, id);
@@ -211,8 +211,9 @@ export class UsersService {
   /** Whether `actor` may modify `target` (role, suspend, remove). */
   private assertCanManage(actor: AuthUser, target: User) {
     if (target.id === actor.id) throw new ForbiddenException('You cannot change your own account here');
-    if (actor.role === 'ADMIN' && isFullAccessRole(target.orgRole)) {
-      throw new ForbiddenException('Admins cannot modify other Admins');
+    // Admins may manage other Admins; only the legacy Owner account stays out of their reach.
+    if (actor.role === 'ADMIN' && target.orgRole === 'OWNER') {
+      throw new ForbiddenException('Admins cannot modify the Owner account');
     }
   }
 

@@ -147,11 +147,11 @@ describe('role change / suspend / remove', () => {
     expect(await ctx.prisma.auditLog.count({ where: { action: 'user.role.changed', entityId: t.user.id } })).toBe(1);
   });
 
-  it('Admin cannot change Owner/Admin or grant Admin', async () => {
+  it('Admin cannot change Owner or grant Admin, but can change another Admin', async () => {
     const other = await a.addUser('ADMIN', 'admin2');
     const op = await a.addUser('OPERATOR', 'op2');
     await ctx.http().patch(`/api/users/${a.users.OWNER.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'EDITOR' }).expect(403);
-    await ctx.http().patch(`/api/users/${other.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'EDITOR' }).expect(403);
+    await ctx.http().post(`/api/users/${other.user.id}/suspend`).set(a.users.ADMIN.auth).expect(200);
     await ctx.http().patch(`/api/users/${op.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'ADMIN' }).expect(403);
     await ctx.http().patch(`/api/users/${op.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'TRAINER' }).expect(400); // retired role
     await ctx.http().patch(`/api/users/${op.user.id}/role`).set(a.users.ADMIN.auth).send({ role: 'EDITOR' }).expect(200);
