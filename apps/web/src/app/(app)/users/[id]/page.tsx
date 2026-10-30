@@ -151,7 +151,7 @@ export default function UserDetailPage() {
     run(async () => {
       await api(`/users/${id}/password`, { method: 'POST', body: { newPassword: newPw } });
       closePassword();
-    }, 'Password changed. The person is signed out everywhere.');
+    }, person?.status === 'invited' ? 'Password set and account activated. They can sign in now.' : 'Password changed. The person is signed out everywhere.');
   };
 
   const confirmAndRun = () => {

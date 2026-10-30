@@ -191,17 +191,22 @@ export class UsersService {
   /**
    * Admin sets a new sign-in password for someone else. Clears any lockout and temporary-password requirement, and
    * revokes the person's sessions so the old password stops working everywhere. The password is never audited.
+   * An invited account becomes active, as one an Admin creates with a password does; a suspended one stays suspended.
    */
   async setPassword(actor: AuthUser, id: string, newPassword: string, meta: RequestMeta) {
     const target = await this.findTarget(actor, id);
     this.assertCanManage(actor, target);
     if (target.status === 'removed') throw new BadRequestException('User has been removed');
     const passwordHash = await argon2.hash(newPassword);
+    const activated = target.status === 'invited';
     await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id }, data: { passwordHash, passwordMustChange: false, failedLogins: 0, lockedUntil: null } });
+      await tx.user.update({
+        where: { id },
+        data: { passwordHash, passwordMustChange: false, failedLogins: 0, lockedUntil: null, ...(activated ? { status: 'active' } : {}) },
+      });
       await this.tokens.revokeAllForUser(id, 'password_set_by_admin', tx);
       await this.audit.record(
-        { action: AuditAction.PasswordReset, organizationId: actor.organizationId, actorId: actor.id, entityType: 'user', entityId: id, metadata: { via: 'admin' }, ...meta },
+        { action: AuditAction.PasswordReset, organizationId: actor.organizationId, actorId: actor.id, entityType: 'user', entityId: id, metadata: { via: 'admin', activated }, ...meta },
         tx,
       );
     });

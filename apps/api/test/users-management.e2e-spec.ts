@@ -94,7 +94,10 @@ describe('profile edits', () => {
     await ctx.http().get('/api/auth/me').set(u.auth).expect(401);
     await ctx.http().post('/api/auth/login').send({ email: u.user.email, password: newPassword }).expect(200);
     const peer = await a.addUser('ADMIN', 'pw-peer');
+    await ctx.prisma.user.update({ where: { id: peer.user.id }, data: { status: 'invited' } });
     await ctx.http().post(`/api/users/${peer.user.id}/password`).set(a.users.ADMIN.auth).send({ newPassword }).expect(204);
+    // An invited account becomes active, so the password an Admin set actually signs them in.
+    await ctx.http().post('/api/auth/login').send({ email: peer.user.email, password: newPassword }).expect(200);
   });
 
   it('invalid profile input is refused', async () => {
